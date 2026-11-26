@@ -1210,7 +1210,11 @@ PAGES.home=()=>{
   <div class="reach">${waBtn("Arrange a viewing on WhatsApp","Hi, I'd like to arrange a viewing.")}${callNum()}</div>
  </div></section>
 
- ${CONFIG.googleReviews?`<section class="sec" aria-labelledby="rvh"><div class="wrap revline"><div><h2 id="rvh">Reviews</h2><p class="lede">See what customers say about buying from us.</p></div><a class="btn btn-line" href="${CONFIG.googleReviews}" target="_blank" rel="noopener noreferrer">Read our reviews on Google</a></div></section>`:""}
+ <section class="sec" aria-labelledby="rvh"><div class="wrap">
+  <div class="revline"><div><h2 id="rvh">Reviews</h2><p class="lede" style="margin-top:10px;max-width:52ch">${REVIEWS.length?"What customers say after buying from us or selling us their car.":"We're a new, local dealer, so we're collecting our first reviews. Bought from us or sold us your car? We'd really appreciate a few honest words."}</p></div>
+   <div class="reach">${CONFIG.googleReviews?`<a class="btn btn-line" href="${CONFIG.googleReviews}" target="_blank" rel="noopener noreferrer">Read our reviews on Google</a>`:""}${CONFIG.facebookReviews?fbBtn("Review us on Facebook","btn-line"):""}</div></div>
+  ${REVIEWS.length?`<div style="margin-top:28px">${ReviewsBlock(3)}</div>`:""}
+ </div></section>
 
  <section class="sec navy" aria-labelledby="fu"><div class="wrap findus">
   <div><h2 id="fu">Find us</h2><p>Ramsden Road, Hereford ${esc(CONFIG.address.postcode)}. The cars are in the parking bays behind the fence. Viewings are by appointment, so please message or call before you come.</p>
