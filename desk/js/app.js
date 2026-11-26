@@ -318,7 +318,7 @@ async function car(id) {
         <label class="btn">Upload<input type="file" accept="image/*" multiple id="up" hidden></label>
       </div>
       ${photos.length ? `<div class="photos">${photos.map((p, i) => `<div class="ph" style="background-image:url('${urls[p.id]}')">${c.cover_photo === p.id || (!c.cover_photo && i === 0) ? '<span class="cover">Cover</span>' : ""}<span class="cap"><span>${esc(stageLabel([...SLOTS, ["other", "Other"]], p.slot))}</span><span>${i + 1}</span></span><button data-ph="${p.id}" aria-label="Photo options"><span>⋯</span></button></div>`).join("")}</div>
-      <button class="btn block" id="sharelist">Share listing photos</button>` : `<p class="muted">Take the five checklist photos first. Originals are kept, plus a smaller copy for listings.</p>`}
+      <button class="btn block" id="sharelist">Share listing photos</button>` : `<p class="muted">Take the five checklist photos first. ${S.mode === "github" ? "Each photo is saved at listing size (1600px) for the website." : "Originals are kept, plus a smaller copy for listings."}</p>`}
     </section>
 
     </div><div class="col">
