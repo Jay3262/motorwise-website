@@ -2,6 +2,11 @@
 [build]
   publish = "."
 
+# Server-side helpers (vehicle lookup for the Desk). Keys are set in Netlify, never in this repo.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Send www and the netlify.app address to the main domain, so Google sees one site.
 [[redirects]]
   from = "https://www.motorwisehereford.co.uk/*"
