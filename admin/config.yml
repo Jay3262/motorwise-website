@@ -1,0 +1,61 @@
+# Motorwise stock admin (Decap CMS). Sign in at https://motorwisehereford.co.uk/admin
+backend:
+  name: github
+  repo: Jay3262/motorwise-website
+  branch: main
+  base_url: https://api.netlify.com
+  commit_messages:
+    update: "Stock: update {{slug}}"
+    uploadMedia: "Photo: upload {{path}}"
+    deleteMedia: "Photo: delete {{path}}"
+
+site_url: https://motorwisehereford.co.uk
+display_url: https://motorwisehereford.co.uk
+locale: en
+
+media_folder: images/uploads
+public_folder: /images/uploads
+
+collections:
+  - name: stock
+    label: Stock
+    editor: { preview: false }
+    files:
+      - name: cars
+        label: Cars for sale
+        file: data/stock.json
+        format: json
+        fields:
+          - label: Cars
+            name: cars
+            widget: list
+            label_singular: car
+            add_to_top: true
+            summary: "{{fields.year}} {{fields.make}} {{fields.model}} · {{fields.plate}} · {{fields.status}}"
+            fields:
+              - { label: "Status", name: status, widget: select, default: available, options: [ { label: "Available", value: available }, { label: "Reserved", value: reserved }, { label: "Sold (hidden from the site)", value: sold } ] }
+              - { label: "Stock number", name: id, widget: string, hint: "Unique, for example MW005. Don't change it once the car is listed, or its web link changes." , pattern: ['^MW[0-9]{3,}$', "Use MW followed by numbers, for example MW005"] }
+              - { label: "Registration", name: plate, widget: string, required: false, hint: "For example GD08 TEV" }
+              - { label: "Make", name: make, widget: string, hint: "For example Skoda" }
+              - { label: "Model", name: model, widget: string, hint: "For example Fabia Estate" }
+              - { label: "Version", name: trim, widget: string, required: false, hint: "Engine and trim, for example 1.4 SE. Leave blank if unsure." }
+              - { label: "Year", name: year, widget: number, value_type: int, min: 1980, max: 2030 }
+              - { label: "Registered", name: reg, widget: string, hint: "Year and plate age, for example 2008 (08)" }
+              - { label: "Price (£)", name: price, widget: number, value_type: int, required: false, hint: "Leave blank to show 'Call for price'." }
+              - { label: "Mileage", name: mileage, widget: number, value_type: int, min: 0 }
+              - { label: "Mileage is approximate", name: mileageApprox, widget: boolean, default: false, required: false }
+              - { label: "Fuel", name: fuel, widget: select, required: false, options: [Petrol, Diesel, Hybrid, Electric] }
+              - { label: "Gearbox", name: trans, widget: select, required: false, options: [Manual, Automatic] }
+              - { label: "Engine", name: engine, widget: string, required: false, hint: "For example 1.6 litre petrol" }
+              - { label: "Engine size (cc)", name: engineCc, widget: number, value_type: int, required: false }
+              - { label: "Colour", name: colour, widget: string, required: false }
+              - { label: "Body", name: body, widget: select, required: false, options: [Hatchback, Estate, Saloon, SUV, MPV, Coupe, Convertible, Van] }
+              - { label: "Doors", name: doors, widget: number, value_type: int, required: false }
+              - { label: "MOT expires", name: motFull, widget: string, required: false, hint: "For example 5 June 2027" }
+              - { label: "MOT notes", name: motNotes, widget: text, required: false, hint: "Last test result and any advisories, in plain words." }
+              - { label: "Description", name: desc, widget: text, hint: "Two or three plain sentences. Only things you know are true." }
+              - { label: "Equipment", name: equip, widget: list, required: false, field: { label: Item, name: item, widget: string } }
+              - { label: "Known issues", name: issues, widget: list, required: false, hint: "Every fault you know about. These show on the listing.", field: { label: Issue, name: issue, widget: string } }
+              - { label: "Photos", name: photos, widget: list, required: false, hint: "Real photos of this car only. The first photo is the main one; drag to reorder.", field: { label: Photo, name: photo, widget: image, choose_url: false } }
+              - { label: "Show first on the homepage", name: featured, widget: boolean, default: false, required: false }
+              - { label: "Date added", name: added, widget: datetime, format: "YYYY-MM-DD", date_format: "DD/MM/YYYY", time_format: false }

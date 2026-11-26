@@ -1,0 +1,10 @@
+# Static site: no build step. Netlify publishes the repository as it is.
+[build]
+  publish = "."
+
+# Send www and the netlify.app address to the main domain, so Google sees one site.
+[[redirects]]
+  from = "https://www.motorwisehereford.co.uk/*"
+  to = "https://motorwisehereford.co.uk/:splat"
+  status = 301
+  force = true
