@@ -11,7 +11,9 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const APP = document.getElementById("app");
 
-const CAR_STAGES = [["preparing", "Preparing"], ["available", "Available"], ["reserved", "Reserved"], ["sold", "Sold"]];
+const CAR_STAGES = [["preparing", "Preparing"], ["available", "Available"], ["reserved", "Reserved"], ["sold", "Sold"], ["returned", "Returned to owner (SOR)"]];
+const OUT = ["sold", "returned"];
+const sorTag = c => c.sor ? `<span class="tag sor" title="Sale or return">SOR</span>` : "";
 const LEAD_STAGES = [["new", "New"], ["replied", "Replied"], ["viewing_booked", "Viewing booked"], ["sold", "Sold"], ["closed", "Closed"]];
 const SOURCES = ["Phone", "WhatsApp", "Facebook", "Marketplace", "Website", "Email", "Walk-up", "Other"];
 const SLOTS = [["exterior", "Exterior"], ["interior", "Interior"], ["dashboard", "Dash / miles"], ["boot", "Boot"], ["damage", "Damage"]];
@@ -176,8 +178,10 @@ async function today() {
     if (missing.length) items.push({ pri: 4, href: `#car/${c.id}`, t: `Photos needed: ${esc(c.reg)}`, s: missing.map(m => m[1]).join(", "), tag: ["preparing", "Preparing"] });
   }
   for (const c of carsL.filter(c => c.status === "sold")) { const f = carFigures(c, txs, S.settings); if (f.owed > 0) items.push({ pri: 3.5, href: `#money-car/${c.id}`, t: `${money(f.owed)} still owed`, s: `${esc(c.reg)} · ${esc(carTitle(c))}`, tag: ["new", "Owed"] }); }
-  for (const c of carsL.filter(c => c.status !== "sold" && !c.sample)) {
-    if (!txs.some(t => t.car_id === c.id && t.type === "purchase")) items.push({ pri: 3.8, href: `#car/${c.id}`, t: `Add what you paid: ${esc(c.stock_id || c.reg)}`, s: esc(carTitle(c)), tag: ["preparing", "Accounts"] });
+  for (const c of carsL.filter(c => c.sor && c.status === "sold")) { const ff = carFigures(c, txs, S.settings); if (ff.ownerOwed > 0) items.push({ pri: 2.2, href: `#car/${c.id}`, t: `Pay ${esc(c.sor_owner || "the owner")} ${money(ff.ownerOwed)}`, s: `Sale or return: ${esc(c.stock_id || c.reg)} has sold`, tag: ["failed", "Owed"] }); }
+  for (const c of carsL.filter(c => c.sor && !OUT.includes(c.status) && c.sor_until && c.sor_until <= todayISO())) items.push({ pri: 2.4, href: `#car/${c.id}`, t: `Sale or return agreement has ended: ${esc(c.stock_id || c.reg)}`, s: `Agree a new date with ${esc(c.sor_owner || "the owner")} or return the car`, tag: ["prepared", "SOR"] });
+  for (const c of carsL.filter(c => !OUT.includes(c.status) && !c.sample)) {
+    if (!c.sor && !txs.some(t => t.car_id === c.id && t.type === "purchase")) items.push({ pri: 3.8, href: `#car/${c.id}`, t: `Add what you paid: ${esc(c.stock_id || c.reg)}`, s: esc(carTitle(c)), tag: ["preparing", "Accounts"] });
     if (S.mode === "github" && c.published && c.web_dirty) items.push({ pri: 2.8, href: `#car/${c.id}`, t: `Website listing out of date: ${esc(c.stock_id || c.reg)}`, s: "You've changed details since publishing. Open and tap Update website listing.", tag: ["prepared", "Website"] });
     if (S.mode === "github" && !c.published && c.status === "available") items.push({ pri: 2.9, href: `#car/${c.id}`, t: `Not on the website yet: ${esc(c.stock_id || c.reg)}`, s: "Open it and tap Publish to website", tag: ["new", "Website"] });
   }
@@ -185,7 +189,7 @@ async function today() {
   const mk = new Date().toISOString().slice(0, 7);
   const soldMonth = carsL.filter(c => c.status === "sold" && !c.sample && (c.sold_date || "").startsWith(mk));
   const profitMonth = soldMonth.reduce((t, c) => t + (carFigures(c, txs, S.settings).profit || 0), 0);
-  const inStock = carsL.filter(c => c.status !== "sold" && !c.sample).length;
+  const inStock = carsL.filter(c => !OUT.includes(c.status) && !c.sample).length;
   const hello = new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening";
   return {
     title: "Today",
@@ -215,17 +219,17 @@ async function photoUrl(p, size = "thumb") { if (!p) return ""; return S.store.f
 async function cars(filter) {
   const [list, photos, txAll] = await Promise.all([S.store.list("cars"), S.store.list("photos"), S.store.list("transactions")]);
   const f = filter || "stock";
-  const noCost = list.filter(c => c.status !== "sold" && !c.sample && !txAll.some(t => t.car_id === c.id && t.type === "purchase"));
-  const shown = list.filter(c => f === "stock" ? c.status !== "sold" : f === "all" ? true : c.status === f).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const noCost = list.filter(c => !OUT.includes(c.status) && !c.sor && !c.sample && !txAll.some(t => t.car_id === c.id && t.type === "purchase"));
+  const shown = list.filter(c => f === "stock" ? !OUT.includes(c.status) : f === "sor" ? c.sor : f === "all" ? true : c.status === f).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
   const thumbs = {}; for (const c of shown) { const p = photos.find(p => p.id === c.cover_photo) || photos.filter(p => p.car_id === c.id).sort((a, b) => a.order - b.order)[0]; thumbs[c.id] = p ? await photoUrl(p) : ""; }
-  const chips = [["stock", "In stock"], ...CAR_STAGES, ["all", "All"]];
+  const chips = [["stock", "In stock"], ...CAR_STAGES.filter(x => x[0] !== "returned"), ...(list.some(c => c.sor) ? [["sor", "Sale or return"]] : []), ["all", "All"]];
   return {
     title: "Stock",
     html: `
     <a class="btn primary block" href="#car-new">Add car</a>
     ${noCost.length ? `<div class="flag"><p style="margin:0"><b>${noCost.length} car${noCost.length > 1 ? "s need" : " needs"} a purchase price</b> so the accounts are right: ${noCost.map(c => `<a href="#car/${c.id}">${esc(c.stock_id || c.reg)}</a>`).join(", ")}</p></div>` : ""}
     <div class="chips" role="group" aria-label="Filter">${chips.map(([k, l]) => `<button aria-pressed="${k === f}" data-f="${k}">${l} ${k === "stock" ? `(${list.filter(c => c.status !== "sold").length})` : ""}</button>`).join("")}</div>
-    <div class="panel tight"><div class="list">${shown.length ? shown.map(c => `<a href="#car/${c.id}"><div class="thumb" style="${thumbs[c.id] ? `background-image:url('${thumbs[c.id]}')` : ""}">${thumbs[c.id] ? "" : "No photo"}</div><div class="grow"><div class="t">${esc(carTitle(c))}</div><div class="s">${c.stock_id ? `<b>${esc(c.stock_id)}</b> · ` : ""}<span class="plate">${esc(c.reg)}</span> ${c.asking_price ? money(c.asking_price) : ""}${c.published && c.status !== "sold" ? " · on website" : ""} ${c.sample ? '<span class="tag sample-t">Sample</span>' : ""}</div></div><span class="tag ${c.status}">${stageLabel(CAR_STAGES, c.status)}</span></a>`).join("") : `<div class="empty">No cars here yet.</div>`}</div></div>`,
+    <div class="panel tight"><div class="list">${shown.length ? shown.map(c => `<a href="#car/${c.id}"><div class="thumb" style="${thumbs[c.id] ? `background-image:url('${thumbs[c.id]}')` : ""}">${thumbs[c.id] ? "" : "No photo"}</div><div class="grow"><div class="t">${esc(carTitle(c))}</div><div class="s">${sorTag(c)} ${c.stock_id ? `<b>${esc(c.stock_id)}</b> · ` : ""}<span class="plate">${esc(c.reg)}</span> ${c.asking_price ? money(c.asking_price) : ""}${c.published && c.status !== "sold" ? " · on website" : ""} ${c.sample ? '<span class="tag sample-t">Sample</span>' : ""}</div></div><span class="tag ${c.status}">${stageLabel(CAR_STAGES, c.status)}</span></a>`).join("") : `<div class="empty">No cars here yet.</div>`}</div></div>`,
     mount() {
       $$("[data-f]").forEach(b => b.onclick = () => location.hash = `#cars/${b.dataset.f}`);
       const imp = $("#imp"); if (imp) imp.onclick = async () => { imp.disabled = true; try { const made = await importFromSite(S.store, CONFIG.GITHUB.siteUrl, m => imp.textContent = m); await S.store.flush(); toast(`${made.length} cars imported`); render(); } catch (e) { toast("Import failed: " + e.message, true); imp.disabled = false; imp.textContent = "Import cars from the website"; } };
@@ -246,13 +250,17 @@ async function carNew() {
       <div class="btns"><label class="f">Year<input class="i" name="year" type="number" inputmode="numeric" min="1980" max="2030"></label><label class="f">Colour<input class="i" name="colour"></label></div>
       <div class="btns"><label class="f">Fuel<select class="i" name="fuel"><option></option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label><label class="f">Gearbox<select class="i" name="gearbox"><option></option><option>Manual</option><option>Automatic</option></select></label></div>
       <div class="btns"><label class="f">Mileage<input class="i" name="mileage" type="number" inputmode="numeric"></label><label class="f">MOT expiry<input class="i" name="mot_expiry" type="date"></label></div>
-      <div class="btns"><label class="f">Bought for (£)<input class="i" name="purchase" type="number" inputmode="decimal" step="0.01"></label><label class="f">Asking price (£)<input class="i" name="asking_price" type="number" inputmode="decimal"></label></div>
+      <label class="row"><input type="checkbox" name="sor" id="sorchk"> Sale or return (selling it for someone else)</label>
+      <div id="sorf" hidden style="gap:12px"><div class="btns"><label class="f">Owner's name<input class="i" name="sor_owner"></label><label class="f">Owner's phone<input class="i" name="sor_phone" type="tel"></label></div>
+      <div class="btns"><label class="f">Owner gets (£) <span class="hint">when it sells</span><input class="i" name="sor_payout" type="number" inputmode="decimal" step="0.01"></label><label class="f">Agreement ends<input class="i" name="sor_until" type="date"></label></div></div>
+      <div class="btns" id="boughtrow"><label class="f">Bought for (£)<input class="i" name="purchase" type="number" inputmode="decimal" step="0.01"></label><label class="f">Asking price (£)<input class="i" name="asking_price" type="number" inputmode="decimal"></label></div>
       <label class="f">Bought on<input class="i" name="purchase_date" type="date" value="${todayISO()}"></label>
       <button class="btn primary block">Save and add photos</button>
     </form>`,
     mount() {
       const f = $("#f");
       f.reg.addEventListener("input", () => { const p = f.reg.selectionStart; f.reg.value = f.reg.value.toUpperCase(); f.reg.setSelectionRange(p, p); });
+      $("#sorchk").onchange = e => { $("#sorf").hidden = !e.target.checked; $("#sorf").style.display = e.target.checked ? "grid" : ""; const p = $('[name=purchase]'); if (p) { p.closest("label").hidden = e.target.checked; if (e.target.checked) p.value = ""; } };
       $("#lookup").onclick = async () => {
         const reg = plateFmt(f.reg.value).replace(/ /g, ""); if (!reg) return toast("Type the registration first", true);
         if (!S.live || !S.settings.lookup_enabled) { $("#lkmsg").textContent = "Vehicle lookup isn't set up yet (it needs free DVLA and DVSA keys). Type the details below."; return; }
@@ -271,8 +279,8 @@ async function carNew() {
         e.preventDefault(); const d = formData(f);
         const lk = f.dataset.lookup ? JSON.parse(f.dataset.lookup) : {};
         const stock_id = nextStockId([], await S.store.list("cars"));
-        const c = await S.store.insert("cars", { stock_id, engine_cc: lk.engineCc || null, mot_history: lk.motTests || null, mot_notes: lk.motSummary || "", first_registered: lk.firstRegistered || null, reg: plateFmt(d.reg), make: d.make, model: d.model, variant: d.variant, year: d.year, colour: d.colour, fuel: d.fuel, gearbox: d.gearbox, mileage: d.mileage, mot_expiry: d.mot_expiry, asking_price: d.asking_price, purchase_date: d.purchase_date, status: "preparing", keys: 1, known_faults: "", condition: "", service_history: "", added_by: S.user.email });
-        if (d.purchase) await S.store.insert("transactions", { car_id: c.id, type: "purchase", amount: d.purchase, date: d.purchase_date || todayISO(), method: "bank", note: "Purchase", by: S.user.email });
+        const c = await S.store.insert("cars", { stock_id, engine_cc: lk.engineCc || null, mot_history: lk.motTests || null, mot_notes: lk.motSummary || "", first_registered: lk.firstRegistered || null, reg: plateFmt(d.reg), make: d.make, model: d.model, variant: d.variant, year: d.year, colour: d.colour, fuel: d.fuel, gearbox: d.gearbox, mileage: d.mileage, mot_expiry: d.mot_expiry, asking_price: d.asking_price, purchase_date: d.purchase_date, sor: !!d.sor, sor_owner: d.sor_owner || "", sor_phone: d.sor_phone || "", sor_payout: d.sor_payout || null, sor_until: d.sor_until || null, status: "preparing", keys: 1, known_faults: "", condition: "", service_history: "", added_by: S.user.email });
+        if (d.purchase && !d.sor) await S.store.insert("transactions", { car_id: c.id, type: "purchase", amount: d.purchase, date: d.purchase_date || todayISO(), method: "bank", note: "Purchase", by: S.user.email });
         await audit("car_added", { car_id: c.id, stock_id });
         toast(`Car added as stock number ${stock_id}`); location.hash = `#car/${c.id}`;
       };
@@ -283,20 +291,21 @@ const cap = s => String(s).toLowerCase().replace(/\b\w/g, m => m.toUpperCase());
 
 async function car(id) {
   const c = await S.store.get("cars", id); if (!c) return { title: "Not found", back: "#cars", html: `<div class="empty">This car has been removed.</div>` };
-  const [photosAll, txs] = await Promise.all([S.store.list("photos"), S.store.list("transactions")]);
+  const [photosAll, txs, leadsAll, viewingsAll] = await Promise.all([S.store.list("photos"), S.store.list("transactions"), S.store.list("leads"), S.store.list("viewings")]);
   const photos = photosAll.filter(p => p.car_id === id).sort((a, b) => a.order - b.order);
   const urls = {}; for (const p of photos) urls[p.id] = await photoUrl(p);
   const have = new Set(photos.map(p => p.slot));
   const f = carFigures(c, txs, S.settings);
   const ctx = txs.filter(t => t.car_id === id).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const txLabel = { purchase: "Purchase", expense: "Cost", deposit: "Deposit in", part_payment: "Part-payment in", balance: "Balance in", refund: "Refund out" };
+  const txLabel = { purchase: "Purchase", expense: "Cost", deposit: "Deposit in", part_payment: "Part-payment in", balance: "Balance in", refund: "Refund out", sor_payout: "Paid to owner (SOR)" };
   return {
     title: c.reg, back: "#cars", keepScroll: (() => { const k = car.lastId === id; car.lastId = id; return k; })(),
     html: `<div class="cols"><div class="col">
     <section class="panel">
       <div class="row between"><div class="grow"><h1>${esc(carTitle(c))}</h1><p class="muted">${c.stock_id ? `<b>Stock no. ${esc(c.stock_id)}</b>` : `<button class="btn" id="giveid" style="min-height:36px">Give it a stock number</button>`}${c.variant ? " · " + esc(c.variant) : ""}</p></div><span class="plate">${esc(c.reg)}</span></div>
       ${c.sample ? `<p><span class="tag sample-t">Sample record</span></p>` : ""}
-      <label class="f">Stage<select class="i" id="stage">${CAR_STAGES.map(([k, l]) => `<option value="${k}" ${c.status === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      ${c.sor ? `<div class="flag sorbox"><p style="margin:0"><b>Sale or return</b> for ${esc(c.sor_owner || "the owner")}${c.sor_phone ? ` (<a href="tel:${esc(c.sor_phone)}">${esc(c.sor_phone)}</a>)` : ""}. They get <b>${money(c.sor_payout || 0)}</b> when it sells${c.sor_until ? `; agreement runs to ${fmtDate(c.sor_until)}` : ""}.${f.ownerOwed ? `<br><b>You still owe them ${money(f.ownerOwed)}.</b> <button class="btn" id="payowner" style="min-height:36px;margin-top:6px">Record payment to owner</button>` : ""}</p></div>` : ""}
+      <label class="f">Stage<select class="i" id="stage">${CAR_STAGES.filter(([k]) => k !== "returned" || c.sor || c.status === "returned").map(([k, l]) => `<option value="${k}" ${c.status === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <div class="row between"><span class="muted">Asking price</span><span class="big">${c.asking_price ? money(c.asking_price) : "Not set"}</span></div>
     </section>
 
@@ -313,11 +322,12 @@ async function car(id) {
     </section>
 
     </div><div class="col">
+    ${buyersPanel(c, leadsAll, viewingsAll)}
     ${websitePanel(c, photos)}
     <section class="panel">
       <div class="row between"><h2>Costs and money</h2><a class="small" href="#money-car/${c.id}">Full breakdown</a></div>
-      ${!f.purchase ? `<form class="flag" id="paid" style="display:grid;gap:8px"><b>What did you pay for this car?</b><div class="btns"><label class="f">Amount (£)<input class="i" name="amount" type="number" inputmode="decimal" step="0.01" required></label><label class="f">Date<input class="i" name="date" type="date" value="${esc(c.purchase_date || todayISO())}"></label></div><button class="btn primary">Save purchase price</button></form>` : ""}
-      <div class="calc">${f.lines.map(([k, v]) => `<div class="l"><span>${k}</span><span class="num">${money2(v)}</span></div>`).join("")}<div class="l tot"><span>${f.sold ? "Profit" : "Cash tied up"}</span><span class="num">${money2(f.sold ? f.profit : f.cost)}</span></div><div class="muted">${esc(f.working)}</div></div>
+      ${!f.purchase && !c.sor ? `<form class="flag" id="paid" style="display:grid;gap:8px"><b>What did you pay for this car?</b><div class="btns"><label class="f">Amount (£)<input class="i" name="amount" type="number" inputmode="decimal" step="0.01" required></label><label class="f">Date<input class="i" name="date" type="date" value="${esc(c.purchase_date || todayISO())}"></label></div><button class="btn primary">Save purchase price</button></form>` : ""}
+      <div class="calc">${f.lines.map(([k, v]) => `<div class="l"><span>${k}</span><span class="num">${money2(v)}</span></div>`).join("")}<div class="l tot"><span>${f.sold ? "Profit" : "Cash tied up"}</span><span class="num">${money2(f.sold ? f.profit : f.cashTied)}</span></div><div class="muted">${esc(f.working)}</div></div>
       <div class="list" style="margin:0 -16px">${ctx.map(t => `<button data-tx="${t.id}"><div class="grow"><div class="t">${esc(txLabel[t.type] || t.type)}${t.category ? `: ${esc(t.category)}` : ""}</div><div class="s">${fmtDate(t.date)} · ${esc(t.note || "")}${t.receipt_path ? " · receipt" : ""}</div></div><span class="num">${money2(t.amount)}</span></button>`).join("")}</div>
       <div class="btns"><button class="btn" id="addexp">Add cost</button><button class="btn" id="adddep">Take deposit</button></div>
     </section>
@@ -334,6 +344,9 @@ async function car(id) {
         <div class="btns"><label class="f">Engine <span class="hint">e.g. 1.6 petrol</span><input class="i" name="engine" value="${esc(c.engine)}"></label><label class="f">Engine size (cc)<input class="i" name="engine_cc" type="number" value="${esc(c.engine_cc)}"></label></div>
         <label class="row"><input type="checkbox" name="mileage_approx" ${c.mileage_approx ? "checked" : ""}> Mileage is approximate</label>
         <label class="f">VIN <span class="hint">(optional, shown on the invoice)</span><input class="i" name="vin" value="${esc(c.vin)}"></label>
+        <label class="row"><input type="checkbox" name="sor" ${c.sor ? "checked" : ""}> Sale or return (selling it for someone else)</label>
+        <div class="btns"><label class="f">Owner's name<input class="i" name="sor_owner" value="${esc(c.sor_owner)}"></label><label class="f">Owner's phone<input class="i" name="sor_phone" type="tel" value="${esc(c.sor_phone)}"></label></div>
+        <div class="btns"><label class="f">Owner gets (£) <span class="hint">when it sells</span><input class="i" name="sor_payout" type="number" step="0.01" value="${esc(c.sor_payout)}"></label><label class="f">Agreement ends<input class="i" name="sor_until" type="date" value="${esc(c.sor_until)}"></label></div>
         <label class="f">Equipment <span class="hint">One per line, e.g. Air conditioning</span><textarea class="i" name="equipment">${esc(c.equipment)}</textarea></label>
         <label class="f">MOT notes <span class="hint">Last test result and any advisories</span><textarea class="i" name="mot_notes">${esc(c.mot_notes)}</textarea></label>
         <label class="f">Service history<input class="i" name="service_history" value="${esc(c.service_history)}"></label>
@@ -349,9 +362,10 @@ async function car(id) {
         const to = e.target.value;
         if (to === "sold" && c.status !== "sold") { e.target.value = c.status; return soldSheet(c); }
         await S.store.update("cars", id, { status: to }); await audit("car_stage", { car_id: id, to }); toast(`Marked ${stageLabel(CAR_STAGES, to)}`);
-        if (S.mode === "github" && c.published) { try { await syncWebsite(id, { remove: to === "preparing" }); toast(to === "sold" ? "Marked sold on the website" : to === "preparing" ? "Taken off the website" : "Website updated"); } catch (err) { toast("Website not updated: " + err.message, true); } render(); }
+        if (S.mode === "github" && c.published) { const off = ["preparing", "returned"].includes(to); try { await syncWebsite(id, { remove: off }); toast(off ? "Taken off the website" : "Website updated"); } catch (err) { toast("Website not updated: " + err.message, true); } render(); }
       };
       mountWebsite(c, photos);
+      const po = $("#payowner"); if (po) po.onclick = () => txSheet({ car_id: id, type: "sor_payout", amount: f.ownerOwed, note: `Sale or return payout to ${c.sor_owner || "owner"}` });
       const gi = $("#giveid"); if (gi) gi.onclick = async () => { const sid = nextStockId([], await S.store.list("cars")); await S.store.update("cars", id, { stock_id: sid }); toast(`Stock number ${sid} given`); render(); };
       $("#det").onsubmit = async e => { e.preventDefault(); await S.store.update("cars", id, { ...formData(e.target), ...(c.published ? { web_dirty: true } : {}) }); toast(c.published ? "Saved. Tap Update website listing to put it live." : "Saved"); render(); };
       const addPhotos = async files => {
@@ -408,18 +422,33 @@ function soldSheet(c) {
       <div class="btns"><label class="f">Sold for (£)<input class="i" name="sold_price" type="number" inputmode="decimal" step="0.01" value="${esc(c.asking_price || "")}" required></label><label class="f">Date sold<input class="i" name="sold_date" type="date" value="${todayISO()}" required></label></div>
       <label class="f">Part exchange value (£) <span class="hint">Leave blank if none</span><input class="i" name="px_value" type="number" inputmode="decimal"></label>
       <label class="row"><input type="checkbox" name="paid" checked> Customer has paid in full</label>
+      ${c.sor ? `<label class="row"><input type="checkbox" name="payowner"> I've paid the owner their ${money(c.sor_payout || 0)} (sale or return)</label>` : ""}
       <label class="f">Paid by<select class="i" name="method"><option value="bank">Bank transfer</option><option value="cash">Cash</option><option value="card">Card</option></select></label>
       <button class="btn primary block">Mark sold</button><button type="button" class="btn block" data-close>Cancel</button></form>`, (el, close) => {
     $("#sf", el).onsubmit = async e => {
       e.preventDefault(); const d = formData(e.target);
       await S.store.update("cars", c.id, { status: "sold", sold_price: d.sold_price, sold_date: d.sold_date, px_value: d.px_value || 0 });
       if (d.paid) { const due = (Number(d.sold_price) || 0) - (Number(d.px_value) || 0); if (due > 0) await S.store.insert("transactions", { car_id: c.id, type: "balance", amount: due, date: d.sold_date, method: d.method, note: "Paid in full", by: S.user.email }); }
+      if (c.sor && d.payowner && Number(c.sor_payout)) await S.store.insert("transactions", { car_id: c.id, type: "sor_payout", amount: c.sor_payout, date: d.sold_date, method: "bank", note: `Sale or return payout to ${c.sor_owner || "owner"}`, by: S.user.email });
       await audit("car_sold_quick", { car_id: c.id, price: d.sold_price }); close();
       toast(`Sold for ${money(d.sold_price)}`);
       if (S.mode === "github" && c.published) { try { await syncWebsite(c.id); toast("Marked sold on the website"); } catch (err) { toast("Website not updated: " + err.message, true); } }
       render();
     };
   });
+}
+
+/* ---------------- Interested buyers on a car ---------------- */
+function buyersPanel(c, leadsAll, viewingsAll) {
+  const ls = leadsAll.filter(l => l.car_id === c.id && l.stage !== "closed").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const soon = Date.now() - 3 * 3600e3;
+  const vs = viewingsAll.filter(v => v.car_id === c.id && !v.outcome && v.at && new Date(v.at).getTime() > soon).sort((a, b) => a.at.localeCompare(b.at));
+  const who = id => (leadsAll.find(l => l.id === id) || {}).name || "Customer";
+  return `<section class="panel tight"><div style="padding:16px 16px 4px" class="row between"><h2>Interested buyers</h2><span class="muted">${ls.length} lead${ls.length === 1 ? "" : "s"}</span></div>
+    ${vs.length ? `<div style="padding:0 16px"><p class="muted" style="margin:4px 0">Viewings booked</p></div><div class="list">${vs.map(v => `<a href="#viewing/${v.id}"><div class="grow"><div class="t">${fmtDT(v.at)}</div><div class="s">${esc(who(v.lead_id))}${v.assigned_to ? ` · with ${esc(nameOf(v.assigned_to))}` : ""}</div></div><span class="tag prepared">Viewing</span></a>`).join("")}</div>` : ""}
+    <div class="list">${ls.length ? ls.map(l => `<a href="#lead/${l.id}"><div class="grow"><div class="t">${esc(l.name || "Unknown")}</div><div class="s">${esc(stageLabel(LEAD_STAGES, l.stage))}${l.phone ? ` · ${esc(l.phone)}` : ""}${l.assigned_to ? ` · ${esc(nameOf(l.assigned_to))}` : ""}</div></div>${I.chev || ""}</a>`).join("") : `<div class="muted" style="padding:12px 16px">Nobody linked to this car yet. When someone asks about it, add them here, or set "Interested in" on their lead.</div>`}</div>
+    <div class="btns" style="padding:12px 16px 16px"><a class="btn" href="#lead-new/${c.id}">Add enquiry</a><a class="btn" href="#viewing-new//${c.id}">Book viewing</a></div>
+  </section>`;
 }
 
 /* ---------------- Website listing ---------------- */
@@ -474,13 +503,13 @@ async function syncWebsite(carId, opts = {}) {
 // Add or edit a money record (cost, overhead, deposit, payment, refund) with an optional receipt photo.
 function txSheet(t) {
   const isNew = !t.id; const type = t.type;
-  const title = { expense: "Cost for this car", overhead: "Business overhead", deposit: "Deposit taken", part_payment: "Part-payment", balance: "Balance payment", refund: "Refund to customer", purchase: "Purchase price" }[type] || "Money";
+  const title = { expense: "Cost for this car", overhead: "Business overhead", deposit: "Deposit taken", part_payment: "Part-payment", balance: "Balance payment", refund: "Refund to customer", purchase: "Purchase price", sor_payout: "Payment to owner (sale or return)" }[type] || "Money";
   const cats = type === "expense" ? EXPENSE_CATS : type === "overhead" ? OVERHEAD_CATS : null;
   sheet(`<h2>${title}</h2><form id="tf" style="display:grid;gap:12px">
     <label class="f">Amount (£)<input class="i" name="amount" type="number" inputmode="decimal" step="0.01" required value="${esc(t.amount ?? "")}"></label>
     ${cats ? `<label class="f">Type<select class="i" name="category">${cats.map(x => `<option ${t.category === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>` : ""}
     <div class="btns"><label class="f">Date<input class="i" name="date" type="date" value="${esc(t.date || todayISO())}"></label>
-    <label class="f">${["expense", "overhead", "purchase", "refund"].includes(type) ? "Paid by" : "Paid by customer"}<select class="i" name="method">${[["bank", "Bank transfer"], ["cash", "Cash"], ["card", "Card"], ["other", "Other"]].map(([k, l]) => `<option value="${k}" ${t.method === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+    <label class="f">${["expense", "overhead", "purchase", "refund", "sor_payout"].includes(type) ? "Paid by" : "Paid by customer"}<select class="i" name="method">${[["bank", "Bank transfer"], ["cash", "Cash"], ["card", "Card"], ["other", "Other"]].map(([k, l]) => `<option value="${k}" ${t.method === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
     <label class="f">Note<input class="i" name="note" value="${esc(t.note || "")}"></label>
     ${["expense", "overhead", "purchase"].includes(type) ? `<label class="btn">${t.receipt_path ? "Replace receipt photo" : "Add receipt photo"}<input type="file" accept="image/*" name="receipt" hidden></label><p class="muted" id="rmsg">${t.receipt_path ? "Receipt saved." : ""}</p>` : ""}
     <button class="btn primary block">${isNew ? "Save" : "Save changes"}</button>
@@ -522,9 +551,9 @@ async function leads(seg = "leads", filter) {
 }
 const segs = (on) => `<div class="chips" role="tablist"><button aria-pressed="${on === "leads"}" onclick="location.hash='#leads/leads'">Leads</button><button aria-pressed="${on === "viewings"}" onclick="location.hash='#leads/viewings'">Viewings</button></div>`;
 const teamOptions = (sel, allowNone = true) => `${allowNone ? `<option value="">Unassigned</option>` : ""}${S.team.map(t => `<option value="${esc(t.email)}" ${t.email === sel ? "selected" : ""}>${esc(t.name)}</option>`).join("")}`;
-const carOptions = (carsL, sel, allowNone = true) => `${allowNone ? `<option value="">No particular car</option>` : ""}${carsL.filter(c => c.status !== "sold" || c.id === sel).map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.reg)} · ${esc(carTitle(c))}</option>`).join("")}`;
+const carOptions = (carsL, sel, allowNone = true) => `${allowNone ? `<option value="">No particular car</option>` : ""}${carsL.filter(c => !OUT.includes(c.status) || c.id === sel).map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.reg)} · ${esc(carTitle(c))}</option>`).join("")}`;
 
-async function leadNew() {
+async function leadNew(carId) {
   const carsL = await S.store.list("cars");
   return {
     title: "Add lead", back: "#leads",
@@ -532,7 +561,7 @@ async function leadNew() {
       <label class="f">Name<input class="i" name="name" autocomplete="off" required></label>
       <div class="btns"><label class="f">Phone<input class="i" name="phone" type="tel" inputmode="tel"></label><label class="f">Came in by<select class="i" name="source">${SOURCES.map(s => `<option>${s}</option>`).join("")}</select></label></div>
       <label class="f">Email<input class="i" name="email" type="email"></label>
-      <label class="f">Interested in<select class="i" name="car_id">${carOptions(carsL, "")}</select></label>
+      <label class="f">Interested in<select class="i" name="car_id">${carOptions(carsL, carId || "")}</select></label>
       <label class="f">What did they say?<textarea class="i" name="notes" placeholder="Paste or type their message"></textarea></label>
       <div class="btns"><label class="f">Assign to<select class="i" name="assigned_to">${teamOptions("")}</select></label><label class="f">Follow up<input class="i" name="follow_up" type="datetime-local" value="${localDT(new Date(Date.now() + 3600e3))}"></label></div>
       <button class="btn primary block">Save lead</button></form>`,
@@ -599,7 +628,7 @@ async function lead(id) {
   };
 }
 
-async function viewingNew(leadId) {
+async function viewingNew(leadId, carId) {
   const [leadsL, carsL] = await Promise.all([S.store.list("leads"), S.store.list("cars")]);
   const l = leadsL.find(x => x.id === leadId);
   const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(11, 0, 0, 0);
@@ -608,7 +637,7 @@ async function viewingNew(leadId) {
     html: `<form class="panel" id="f">
       <label class="f">Customer<select class="i" name="lead_id"><option value="">New customer…</option>${leadsL.filter(x => !["sold", "closed"].includes(x.stage) || x.id === leadId).map(x => `<option value="${x.id}" ${x.id === leadId ? "selected" : ""}>${esc(x.name)}${x.phone ? " · " + esc(x.phone) : ""}</option>`).join("")}</select></label>
       <div id="newc" class="btns" ${leadId ? "hidden" : ""}><label class="f">Name<input class="i" name="name"></label><label class="f">Phone<input class="i" name="phone" type="tel"></label></div>
-      <label class="f">Car<select class="i" name="car_id" required>${carOptions(carsL, l ? l.car_id : "", false)}</select></label>
+      <label class="f">Car<select class="i" name="car_id" required>${carOptions(carsL, carId || (l ? l.car_id : ""), false)}</select></label>
       <label class="f">When<input class="i" name="at" type="datetime-local" value="${localDT(d)}" required></label>
       <label class="f">Who's meeting them<select class="i" name="assigned_to">${teamOptions(S.user.email, false)}</select></label>
       <label class="f">Notes<input class="i" name="notes"></label>
@@ -675,7 +704,7 @@ async function moneyScreen(period = "month") {
   const pa = { months: 6, monthly_overheads: a.monthly_overheads, ...(S.settings.projection || {}) };
   const proj = projection(carsL, txs, S.settings, pa);
   const bars = (list, key, cls = "") => { const max = Math.max(1, ...list.map(x => Math.abs(x[key]))); return `<div class="bars">${list.map(x => `<div title="${monthLabel(x.key)}: ${money(x[key])}"><b>${x[key] ? money(x[key]) : ""}</b><i class="${cls} ${x[key] < 0 ? "neg" : ""}" style="height:${Math.max(2, Math.round(Math.abs(x[key]) / max * 100))}%"></i><small>${monthLabel(x.key).split(" ")[0]}</small></div>`).join("")}</div>`; };
-  const tl = { purchase: "Bought", expense: "Cost", overhead: "Overhead", deposit: "Deposit in", part_payment: "Part-payment in", balance: "Balance in", refund: "Refund out" };
+  const tl = { purchase: "Bought", expense: "Cost", overhead: "Overhead", deposit: "Deposit in", part_payment: "Part-payment in", balance: "Balance in", refund: "Refund out", sor_payout: "Paid to owner (SOR)" };
   return {
     title: "Accounts",
     html: `
@@ -762,7 +791,7 @@ async function moneyCar(id) {
         <div class="l"><span>− Purchase price</span><span class="num">${money2(f.purchase)}</span></div>
         <div class="l"><span>− Costs (${mine.filter(t => t.type === "expense").length})</span><span class="num">${money2(f.expenses)}</span></div>
         ${f.refunds ? `<div class="l"><span>− Refunds</span><span class="num">${money2(f.refunds)}</span></div>` : ""}
-        <div class="l tot"><span>${f.sold ? "Profit on this car" : "Cash tied up"}</span><span class="num">${money2(f.sold ? f.profit : f.cost)}</span></div>
+        <div class="l tot"><span>${f.sold ? "Profit on this car" : "Cash tied up"}</span><span class="num">${money2(f.sold ? f.profit : f.cashTied)}</span></div>
         ${f.vat != null ? `<div class="l"><span>VAT estimate (${S.settings.vat_treatment === "margin_scheme" ? "margin ÷ 6" : "price ÷ 6"})</span><span class="num">${money2(f.vat)}</span></div>` : ""}
       </div>
       ${f.sold ? `<div class="calc"><div class="l"><span>Customer has paid</span><span class="num">${money2(f.received - f.refunds)}</span></div>${f.px ? `<div class="l"><span>Part exchange</span><span class="num">${money2(f.px)}</span></div>` : ""}<div class="l tot"><span>Still owed</span><span class="num">${money2(f.owed)}</span></div></div>` : ""}
