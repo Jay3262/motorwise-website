@@ -66,7 +66,8 @@
         "/images/vw-tiguan-vk10odl/28.jpg"
       ],
       "featured": true,
-      "added": "2026-11-23"
+      "added": "2026-11-23",
+      "valetPreview": true
     },
     {
       "id": "MW002",
@@ -147,7 +148,8 @@
       ],
       "featured": false,
       "added": "2026-11-25",
-      "price": 1295
+      "price": 1295,
+      "valetPreview": true
     },
     {
       "id": "MW004",
@@ -175,7 +177,8 @@
       ],
       "issues": [
         "Marks and wear on the alloy wheels",
-        "General wear for the age and mileage"
+        "General wear for the age and mileage",
+        "A loose cable is visible under the passenger side of the dashboard. We'll check it before sale."
       ],
       "photos": [
         "/images/mini-mw57xxp/01.jpg",
@@ -201,7 +204,8 @@
       ],
       "featured": false,
       "added": "2026-11-25",
-      "price": 1295
+      "price": 1295,
+      "valetPreview": true
     }
   ]
 }

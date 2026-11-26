@@ -753,6 +753,8 @@ p,li,dd{text-wrap:pretty}
  .steps3 .n{transition:transform .3s ease}.steps3 li:hover .n{transform:scale(1.1)}
  .card .view svg{transition:transform .2s ease}.card:hover .view svg{transform:translateX(4px)}
 }
+.vnote{margin:2px 0 0;font-size:var(--fs-s);color:var(--muted);background:var(--stone);border-radius:8px;padding:10px 12px}
+@media(max-width:1000px){.gal .vnote{order:2}}
 </style>
 </head>
 <body>
@@ -1306,6 +1308,7 @@ PAGES.car=(h)=>{
     ${GAL.length>1?`<button class="nav prev" id="gprev" aria-label="Previous photo">${ICON.left}</button><button class="nav next" id="gnext" aria-label="Next photo">${ICON.right}</button>`:""}
     <span class="count" id="gcount" aria-live="polite"></span><button class="fs" id="gfs">${ICON.expand} Full screen</button></div>
    <div class="thumbs" id="gthumbs" ${GAL.length>1?"":"hidden"}>${GAL.map((g,i)=>`<button aria-label="Show photo ${i+1}${g.label?": "+esc(g.label):""}" data-i="${i}">${g.thumb?g.thumb():g.svg()}</button>`).join("")}</div>
+   ${v.valetPreview?`<p class="vnote">Most photos are digital valet previews, marked "illustrative". The car's actual condition, including everything under Known issues, is as described. Come and see it in person before you buy.</p>`:""}
    <div class="about"><h2>About this car</h2><p>${esc(v.desc)}</p><p class="muted small" style="margin:0">Every fault we know about is listed under Known issues. Ask us if there is anything you want checked before you visit.</p></div>
   </div>
   <aside class="buy" aria-label="Price and enquiry">

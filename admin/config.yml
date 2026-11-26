@@ -57,5 +57,6 @@ collections:
               - { label: "Equipment", name: equip, widget: list, required: false, field: { label: Item, name: item, widget: string } }
               - { label: "Known issues", name: issues, widget: list, required: false, hint: "Every fault you know about. These show on the listing.", field: { label: Issue, name: issue, widget: string } }
               - { label: "Photos", name: photos, widget: list, required: false, hint: "Real photos of this car only. The first photo is the main one; drag to reorder.", field: { label: Photo, name: photo, widget: image, choose_url: false } }
+              - { label: "Photos include digital valet previews", name: valetPreview, widget: boolean, default: false, required: false, hint: "Turn on if any photos have been digitally cleaned. Shows a note under the gallery." }
               - { label: "Show first on the homepage", name: featured, widget: boolean, default: false, required: false }
               - { label: "Date added", name: added, widget: datetime, format: "YYYY-MM-DD", date_format: "DD/MM/YYYY", time_format: false }
