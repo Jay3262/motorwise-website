@@ -755,6 +755,56 @@ p,li,dd{text-wrap:pretty}
 }
 .vnote{margin:2px 0 0;font-size:var(--fs-s);color:var(--muted);background:var(--stone);border-radius:8px;padding:10px 12px}
 @media(max-width:1000px){.gal .vnote{order:2}}
+
+/* ===== homepage v11 ===== */
+.hero{position:relative;color:#fff;background:#101F32;overflow:hidden;isolation:isolate}
+.hero .hbg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:60% 55%;z-index:-2}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(16,31,50,.96) 0%,rgba(16,31,50,.86) 42%,rgba(16,31,50,.45) 100%)}
+.hero .hin{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.9fr);gap:clamp(24px,4vw,64px);align-items:center;padding-top:clamp(40px,6vw,88px);padding-bottom:clamp(40px,6vw,88px)}
+.hero h1{color:#fff;font-size:clamp(36px,3.4vw + 14px,64px);line-height:1.03;max-width:15ch}
+.hero .kick{display:inline-flex;gap:8px;align-items:center;margin:0 0 16px;font-weight:700;color:#A9E6D8}.hero .kick svg{width:18px}
+.hero .sub{color:#dbe6ee;font-size:var(--fs-l);margin:18px 0 28px;max-width:44ch}
+.hero .reach{display:flex;flex-wrap:wrap;gap:10px}
+.hero .loc{margin:20px 0 0;color:#c4d3df}.hero .loc a{color:#fff;font-weight:700}
+.qsearch{background:#fff;color:#101F32;border-radius:14px;padding:clamp(20px,2.2vw,28px);display:grid;gap:12px;box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
+.qsearch h2{font-size:var(--fs-h3);margin:0 0 2px}
+.qsearch .f{display:grid;gap:6px;font-weight:600;font-size:var(--fs-s)}
+.qchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.qchip{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 12px;border-radius:999px;background:#E7F6F2;color:#0b5e55;font-weight:700;font-size:var(--fs-s);text-decoration:none;transition:background .2s}
+.qchip small{font-weight:600;opacity:.7}.qchip:hover{background:#A9E6D8}
+@media(max-width:900px){.hero .hin{grid-template-columns:minmax(0,1fr)}.hero::before{background:linear-gradient(180deg,rgba(16,31,50,.9),rgba(16,31,50,.8) 55%,rgba(16,31,50,.94))}}
+.tstrip{background:#087C70;color:#fff}
+.tstrip ul{list-style:none;margin:0;padding:14px 0;display:flex;justify-content:space-between;gap:12px 24px;flex-wrap:wrap}
+.tstrip li{display:flex;align-items:center;gap:10px;font-weight:700;color:#fff}.tstrip svg{width:20px;flex:none;color:#A9E6D8}
+@media(max-width:700px){.tstrip ul{display:grid;grid-template-columns:1fr 1fr;font-size:var(--fs-s)}}
+.shead .lede{margin-top:8px}
+.px{background:#fff}
+.pxgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:clamp(24px,4vw,64px);align-items:center;background:#101F32;color:#fff;border-radius:16px;padding:clamp(28px,4vw,56px)}
+.pxgrid h2{color:#fff}.pxgrid .lede{color:#d7e3ea;margin-top:12px}
+.pxq{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}
+.pxq .plate{font:800 clamp(22px,2vw,28px) var(--head);letter-spacing:.08em;text-transform:uppercase;text-align:center;background:#f2d34a;color:#16191c;border:0;min-height:60px;border-radius:8px}
+.pxq .btn{min-height:60px}.pxq .err{grid-column:1/-1;color:#ffd0c4}
+@media(max-width:860px){.pxgrid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:480px){.pxq{grid-template-columns:minmax(0,1fr)}}
+.pillars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;margin-top:28px}
+.pillars>div{background:#fff;border-radius:var(--r);padding:24px;transition:transform .25s ease,box-shadow .25s ease}
+.pillars>div:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.pillars svg{width:30px;height:30px;color:#087C70}
+.pillars h3{font-size:var(--fs-h3);margin:14px 0 6px}.pillars p{margin:0;color:var(--muted)}
+@media(max-width:1000px){.pillars{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.pillars{grid-template-columns:minmax(0,1fr)}}
+.fab{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;display:inline-flex;align-items:center;gap:8px;height:56px;padding:0 20px 0 16px;border-radius:999px;background:#137a3f;color:#fff;font-weight:800;text-decoration:none;box-shadow:0 12px 30px -8px rgba(0,0,0,.4);transition:transform .2s}
+.fab svg{width:24px}.fab:hover{transform:translateY(-2px)}
+body.has-mbar .fab{display:none}
+@media(prefers-reduced-motion:no-preference){
+ .hero .htxt>*{opacity:0;transform:translateY(16px);animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+ .hero .htxt>:nth-child(2){animation-delay:.06s}.hero .htxt>:nth-child(3){animation-delay:.12s}.hero .htxt>:nth-child(4){animation-delay:.18s}.hero .htxt>:nth-child(5){animation-delay:.24s}
+ .hero .qsearch{opacity:0;transform:translateY(24px);animation:rise .8s .25s cubic-bezier(.2,.7,.2,1) forwards}
+ .hero .hbg{animation:drift 18s ease-out forwards}
+ @keyframes drift{from{transform:scale(1.08)}to{transform:scale(1)}}
+ .fab{animation:pop .5s 1.2s cubic-bezier(.2,1.4,.4,1) both}
+ @keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+}
 </style>
 </head>
 <body>
@@ -1186,33 +1236,75 @@ const FAQ=[
  ["Viewings","Can I just turn up?",`Viewings are by appointment, so someone is there and the car is ready. Book on the car's page, or call or WhatsApp us.`],
  ["Selling","Will you buy my car if I don't buy one?","Yes. Send us the details and we'll give you a quote, whether you're buying from us or not. If you've had a quote from We Buy Any Car or Motorway, tell us and we'll aim to beat it."]];
 PAGES.home=()=>{
- setMeta(null,"Affordable used cars from £500 to £5,000 on Ramsden Road, Hereford HR2 6RQ. Real photos, clear prices and known faults listed. Viewings by appointment.");
- const live=liveStock();
+ setMeta(null,"Affordable used cars from £500 to £5,000 on Ramsden Road, Hereford HR2 6RQ. Clear prices, no admin fees and every known fault listed. Viewings by appointment.");
+ const live=liveStock(), n=live.length;
+ const mk=uniq(live.map(v=>v.make)), bodies=uniq(live.map(v=>v.body)), fuels=uniq(live.map(v=>v.fuel));
+ const chip=(href,label,c)=>c?`<a class="qchip" href="#${href}">${esc(label)}<small>${c}</small></a>`:"";
+ const under=m=>live.filter(v=>v.price&&v.price<=m).length;
  return `
- <section class="intro" aria-labelledby="h1"><div class="wrap">
-  <h1 id="h1">Affordable used cars in Hereford</h1>
-  <p class="sub">Everyday cars from £500 to £5,000, with real photos, clear prices and every fault we know about written down.</p>
-  <div class="reach"><a class="btn btn-go" href="#used-cars">Browse cars</a>${waBtn("WhatsApp us","","btn-wa")}</div>
-  <p class="loc">${ICON.pin}<span>Ramsden Road, Hereford ${esc(CONFIG.address.postcode)}</span><span aria-hidden="true">·</span><span>Viewings by appointment</span></p>
- </div></section>
+ <section class="hero" aria-labelledby="h1">
+  <img class="hbg" src="images/yard.jpg" alt="" fetchpriority="high">
+  <div class="wrap hin">
+   <div class="htxt">
+    <p class="kick">${ICON.pin}<span>Ramsden Road, Hereford</span></p>
+    <h1 id="h1">Affordable used cars in Hereford</h1>
+    <p class="sub">Honest everyday cars from £500 to £5,000. Clear prices, no admin fees, and every fault we know about written down.</p>
+    <div class="reach"><a class="btn btn-go" href="#used-cars">Browse cars</a>${waBtn("WhatsApp us","","btn-wa")}</div>
+    <p class="loc">Viewings by appointment · Call ${contactLine("phone")}</p>
+   </div>
+   <form class="qsearch" id="qs" role="search" aria-label="Find a car">
+    <h2>Find your next car</h2>
+    <label class="f" for="qs-make">Make<select class="inp" id="qs-make"><option value="">Any make</option>${mk.map(m=>`<option value="${slug(m)}">${esc(m)} (${live.filter(v=>v.make===m).length})</option>`).join("")}</select></label>
+    <label class="f" for="qs-max">Max price<select class="inp" id="qs-max"><option value="">Any price</option>${[1000,1500,2000,3000,5000].map(p=>`<option value="${p}">${gbp(p)}</option>`).join("")}</select></label>
+    <button class="btn btn-go btn-block" type="submit" id="qs-go">${ICON.search} Show ${n} car${n===1?"":"s"}</button>
+    <div class="qchips">${chip("used-cars--pmax-1500","Under £1,500",under(1500))}${bodies.map(b=>chip("used-cars--body-"+slug(b),b,live.filter(v=>v.body===b).length)).join("")}${fuels.map(f=>chip("used-cars--fuel-"+slug(f),f,live.filter(v=>v.fuel===f).length)).join("")}</div>
+   </form>
+  </div>
+ </section>
+
+ <div class="tstrip"><div class="wrap"><ul>
+  <li>${ICON.check}<span>No admin fees</span></li>
+  <li>${ICON.doc}<span>Every known fault listed</span></li>
+  <li>${ICON.wrench}<span>${CONFIG.aftercare.days}-day goodwill look-over</span></li>
+  <li>${ICON.swap}<span>Part exchange welcome</span></li>
+ </ul></div></div>
 
  <section class="sec" aria-labelledby="inh"><div class="wrap">
-  <div class="shead"><h2 id="inh">In stock now</h2>${live.length>4?`<a class="arrow" href="#used-cars">All ${live.length} cars ${ICON.arrow}</a>`:""}</div>
+  <div class="shead"><div><h2 id="inh">In stock now</h2><p class="lede">Fresh on the yard. Prices include everything, with nothing added on.</p></div>${n?`<a class="arrow" href="#used-cars">See all ${n} cars ${ICON.arrow}</a>`:""}</div>
   ${Grid(live.slice(0,8))}
-  <p class="pxline">${ICON.swap}<span>Got a car to sell or part exchange? <a href="#part-exchange">Get a quote</a></span></p>
  </div></section>
 
- <section class="sec stone" aria-labelledby="vh"><div class="wrap">
+ <section class="sec px" aria-labelledby="pxh"><div class="wrap"><div class="pxgrid">
+  <div><h2 id="pxh">What's your car worth?</h2><p class="lede">Sell it to us or part exchange it against one of ours. You don't have to buy anything. Had a quote from We Buy Any Car or Motorway? Send it over and we'll aim to beat it.</p></div>
+  <form class="pxq" id="pxq" novalidate>
+   <label class="sr" for="pxq-reg">Your registration</label>
+   <input class="inp plate" id="pxq-reg" data-rule="reg" aria-describedby="pxq-reg-err" placeholder="ENTER REG" autocomplete="off">
+   <button class="btn btn-go" type="submit">Get a quote</button>
+   <span class="err" id="pxq-reg-err"></span>
+  </form>
+ </div></div></section>
+
+ <section class="sec stone" aria-labelledby="why"><div class="wrap">
+  <h2 id="why">Why buy from Motorwise</h2>
+  <div class="pillars">
+   <div>${ICON.hand}<h3>Local and independent</h3><p>A small Hereford dealer. You deal with the people who bought and checked the car.</p></div>
+   <div>${ICON.doc}<h3>Nothing hidden</h3><p>Every fault we know about is on the listing, so there are no surprises when you visit.</p></div>
+   <div>${ICON.check}<h3>One clear price</h3><p>The price you see is the price you pay. No admin or preparation fees.</p></div>
+   <div>${ICON.wrench}<h3>${CONFIG.aftercare.days}-day look-over</h3><p>If something comes up in the first ${CONFIG.aftercare.days} days, bring it back and we'll take a look. A goodwill check, not a warranty.</p></div>
+  </div>
+ </div></section>
+
+ <section class="sec" aria-labelledby="vh"><div class="wrap">
   <h2 id="vh">How to arrange a viewing</h2>
   <ol class="steps3">
-   <li><span class="n">1</span><div><h3>Pick a car</h3><p>Every listing has real photos, the price and the faults we know about.</p></div></li>
+   <li><span class="n">1</span><div><h3>Pick a car</h3><p>Every listing has photos, the price and the faults we know about.</p></div></li>
    <li><span class="n">2</span><div><h3>Message or call us</h3><p>WhatsApp or ring ${esc(CONFIG.phone)} with the car and a day and time that suits you.</p></div></li>
    <li><span class="n">3</span><div><h3>We confirm the time</h3><p>We confirm the appointment with you directly and have the car ready on Ramsden Road.</p></div></li>
   </ol>
   <div class="reach">${waBtn("Arrange a viewing on WhatsApp","Hi, I'd like to arrange a viewing.")}${callNum()}</div>
  </div></section>
 
- <section class="sec" aria-labelledby="rvh"><div class="wrap">
+ <section class="sec stone" aria-labelledby="rvh"><div class="wrap">
   <div class="revline"><div><h2 id="rvh">Reviews</h2><p class="lede" style="margin-top:10px;max-width:52ch">${REVIEWS.length?"What customers say after buying from us or selling us their car.":"We're a new, local dealer, so we're collecting our first reviews. Bought from us or sold us your car? We'd really appreciate a few honest words."}</p></div>
    <div class="reach">${CONFIG.googleReviews?`<a class="btn btn-line" href="${CONFIG.googleReviews}" target="_blank" rel="noopener noreferrer">Read our reviews on Google</a>`:""}${CONFIG.facebookReviews?fbBtn("Review us on Facebook","btn-line"):""}</div></div>
   ${REVIEWS.length?`<div style="margin-top:28px">${ReviewsBlock(3)}</div>`:""}
@@ -1220,7 +1312,7 @@ PAGES.home=()=>{
 
  <section class="sec navy" aria-labelledby="fu"><div class="wrap findus">
   <div><h2 id="fu">Find us</h2><p>Ramsden Road, Hereford ${esc(CONFIG.address.postcode)}. The cars are in the parking bays behind the fence. Viewings are by appointment, so please message or call before you come.</p>
-   <div class="reach"><a class="btn btn-go" href="${CONFIG.mapsUrl}" target="_blank" rel="noopener noreferrer">${ICON.pin} Get directions</a></div></div>
+   <div class="reach"><a class="btn btn-go" href="${CONFIG.mapsUrl}" target="_blank" rel="noopener noreferrer">${ICON.pin} Get directions</a>${waBtn("WhatsApp us")}</div></div>
   <dl class="cdl">
    <div><dt>Call</dt><dd>${contactLine("phone")}</dd></div>
    <div><dt>WhatsApp</dt><dd><a href="${waHref()}" target="_blank" rel="noopener">${esc(CONFIG.phone)}</a></dd></div>
@@ -1228,7 +1320,13 @@ PAGES.home=()=>{
    <div><dt>Viewings</dt><dd>By appointment only</dd></div>
   </dl>
  </div></section>`};
-PAGES.home.after=()=>{};
+PAGES.home.after=()=>{
+ const upd=()=>{const f={make:$("#qs-make").value,pmax:$("#qs-max").value},n=applyFilters(f).length;$("#qs-go").innerHTML=`${ICON.search} Show ${n} car${n===1?"":"s"}`;return f};
+ $("#qs-make").onchange=upd;$("#qs-max").onchange=upd;
+ $("#qs").onsubmit=e=>{e.preventDefault();location.hash=buildHash(upd())};
+ const reg=$("#pxq-reg");reg.addEventListener("input",()=>{reg.value=reg.value.toUpperCase()});
+ $("#pxq").onsubmit=e=>{e.preventDefault();const r=RULES.reg(reg.value);if(r!==true){$("#pxq-reg-err").textContent=r;reg.setAttribute("aria-invalid","true");reg.focus();return}store.set("tsm-pxreg",reg.value.toUpperCase().trim());location.hash="part-exchange"};
+};
 PAGES["used-cars"]=(h)=>{
  F=parseHash(h);
  setMeta("Used cars for sale in Hereford","Affordable used cars from £500 to £5,000 on Ramsden Road, Hereford. Known faults listed on every car, viewings by appointment.");
@@ -1660,6 +1758,7 @@ $("#ld-site").textContent=JSON.stringify({"@context":"https://schema.org","@type
 // Typing filters: only characters that can be valid get through.
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset||!el.dataset.rule)return;const r=el.dataset.rule,fix={reg:v=>v.toUpperCase().replace(/[^A-Z0-9 ]/g,""),postcode:v=>v.toUpperCase().replace(/[^A-Z0-9 ]/g,""),mileage:v=>v.replace(/[^\d,]/g,""),year:v=>v.replace(/\D/g,""),moneyOpt:v=>v.replace(/[^\d,.£]/g,""),phone:v=>v.replace(/[^\d +()-]/g,""),phoneOpt:v=>v.replace(/[^\d +()-]/g,"")}[r];if(!fix)return;const nv=fix(el.value);if(nv!==el.value){const p=el.selectionStart-(el.value.length-nv.length);el.value=nv;try{el.setSelectionRange(p,p)}catch(_){}}});
 if(CONFIG.forms==="demo")$("#demobar").hidden=false;
+if(CONFIG.whatsapp)document.body.insertAdjacentHTML("beforeend",`<a class="fab" href="${waHref("Hi, I have a question about one of your cars.")}" target="_blank" rel="noopener" aria-label="WhatsApp us">${ICON.chat}<span>WhatsApp us</span></a>`);
 window.addEventListener("hashchange",route);
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("#mnav").dataset.open==="true"){menu(false);$("#menubtn").focus()}});
 fetch("/data/stock.json",{cache:"no-cache"}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(d=>{STOCK=(d.cars||[]).map(normalise)}).catch(e=>{console.error("Stock could not load",e);STOCK_ERR=true}).finally(route);
