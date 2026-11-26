@@ -73,10 +73,11 @@ export async function publishCar(store, c, photos, deskCars, { remove = false } 
 }
 
 // Bring the cars already on the website into the Desk (first run).
-export async function importFromSite(store, siteUrl, progress = () => { }) {
+export async function importFromSite(store, siteUrl, progress = () => { }, { skipIds = [] } = {}) {
   const stock = await store.readSiteStock(); const made = [];
+  const todo = (stock.cars || []).filter(e => !skipIds.includes(e.id));
   const inv = { Manual: "Manual", Automatic: "Automatic" };
-  for (const [ci, e] of (stock.cars || []).entries()) {
+  for (const [ci, e] of todo.entries()) {
     const motIso = e.motFull ? (() => { const d = new Date(e.motFull + " 12:00"); return isNaN(d) ? null : d.toISOString().slice(0, 10); })() : null;
     const car = await store.insert("cars", {
       reg: e.plate || "", make: e.make, model: e.model, variant: e.trim || "", year: e.year, colour: e.colour || "", fuel: e.fuel || "", gearbox: inv[e.trans] || e.trans || "",
@@ -93,7 +94,7 @@ export async function importFromSite(store, siteUrl, progress = () => { }) {
       await store.putFile(`${base}/listing.jpg`, blob); await store.putFile(`${base}/thumb.jpg`, thumb);
       await store.insert("photos", { id: pid, car_id: car.id, slot: i === 0 ? "exterior" : "other", order: i, original_path: `${base}/listing.jpg`, listing_path: `${base}/listing.jpg`, thumb_path: `${base}/thumb.jpg`, web_path: src.replace(/^\//, "") });
     }
-    made.push(car); progress(`Imported ${ci + 1} of ${stock.cars.length} cars`);
+    made.push(car); progress(`Imported ${ci + 1} of ${todo.length} cars`);
   }
   return made;
 }

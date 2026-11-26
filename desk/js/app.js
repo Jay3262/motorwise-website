@@ -67,10 +67,26 @@ async function loadSettings() {
 
 async function audit(action, detail = {}) { try { await S.store.insert("audit", { action, by: S.user.email, at: nowIso(), ...detail }); } catch { } }
 
+// Bring in any cars that are on the website but not yet in the Desk (first run, or cars added via /admin).
+async function syncFromSite() {
+  try {
+    const [stock, mine] = await Promise.all([S.store.readSiteStock(), S.store.list("cars")]);
+    const have = mine.map(c => c.stock_id).filter(Boolean);
+    const missing = (stock.cars || []).filter(e => !have.includes(e.id));
+    if (!missing.length) return;
+    const bar = document.createElement("div"); bar.className = "syncbar"; bar.setAttribute("role", "status"); document.body.appendChild(bar);
+    bar.textContent = `Bringing in ${missing.length} car${missing.length > 1 ? "s" : ""} from your website…`;
+    const made = await importFromSite(S.store, CONFIG.GITHUB.siteUrl, m => bar.textContent = m, { skipIds: have });
+    await S.store.flush(); bar.remove();
+    toast(`${made.length} car${made.length > 1 ? "s" : ""} brought in from the website`); render();
+  } catch (e) { document.querySelector(".syncbar")?.remove(); toast("Couldn't bring in website stock: " + e.message, true); S.synced = false; }
+}
+
 /* ---------------- Router ---------------- */
 async function render() {
   if (!S.user) return renderLogin();
   await loadSettings();
+  if (S.mode === "github" && !S.synced) { S.synced = true; syncFromSite(); }
   const [r, a, b] = location.hash.replace(/^#/, "").split("/");
   const routes = { today, cars, car, "car-new": carNew, leads, lead, "lead-new": leadNew, "viewing-new": viewingNew, viewing, money: moneyScreen, handover, admin, "money-car": moneyCar };
   const fn = routes[r] || today;
@@ -83,7 +99,9 @@ async function render() {
 function shell(view, route) {
   const tab = { today: "today", cars: "cars", car: "cars", "car-new": "cars", "money-car": "money", leads: "leads", lead: "leads", "lead-new": "leads", "viewing-new": "leads", viewing: "leads", money: "money", handover: "today", admin: "admin" }[route] || "today";
   const tabs = [["today", "Today", I.today], ["cars", "Stock", I.cars], ["leads", "Leads", I.leads], ["money", "Accounts", I.money], ["admin", "Admin", I.admin]];
+  APP.dataset.route = route;
   APP.innerHTML = `
+  <aside class="brand"><img src="icons/icon-192.png" alt="" width="36" height="36"><div><b>Motorwise</b><span>Desk</span></div></aside>
   <header class="top">
     ${view.back ? `<a class="back" href="${view.back}" aria-label="Back">${I.back}</a>` : ""}
     <h1>${esc(view.title)}</h1>
@@ -177,16 +195,17 @@ async function today() {
       <a class="kpi" href="#cars"><span class="k">In stock</span><span class="v">${inStock}</span><span class="muted">cars</span></a>
       <a class="kpi" href="#money"><span class="k">Sold this month</span><span class="v">${soldMonth.length}</span><span class="muted">${money(profitMonth)} profit</span></a>
     </div>
+    <div class="cols today"><div class="col">
     <section class="panel tight" aria-label="Needs doing">
       <div style="padding:14px 16px 6px"><h2>Needs doing</h2></div>
       <div class="list">${items.length ? items.map(i => `<a href="${i.href}"><div class="grow"><div class="t">${i.t}</div><div class="s">${i.s}</div></div>${i.tag ? `<span class="tag ${i.tag[0]}">${i.tag[1]}</span>` : ""}<span class="chev">›</span></a>`).join("") : `<div class="empty">Nothing due. New enquiries, follow-ups and viewings will show here.</div>`}</div>
-    </section>
+    </section></div><div class="col">
     <nav class="quick" aria-label="Quick actions">
       <a href="#car-new">${I.addcar}Add car</a>
       <a href="#lead-new">${I.addlead}Add lead</a>
       <a href="#viewing-new">${I.viewing}Book viewing</a>
       <a href="#handover/new">${I.handover}Start handover</a>
-    </nav>`,
+    </nav></div></div>`,
   };
 }
 
@@ -204,8 +223,7 @@ async function cars(filter) {
     title: "Stock",
     html: `
     <a class="btn primary block" href="#car-new">Add car</a>
-    ${noCost.length ? `<div class="flag"><b>${noCost.length} car${noCost.length > 1 ? "s need" : " needs"} a purchase price</b> so the accounts are right: ${noCost.map(c => `<a href="#car/${c.id}">${esc(c.stock_id || c.reg)}</a>`).join(", ")}</div>` : ""}
-    ${S.mode === "github" && !list.length ? `<section class="panel"><h2>Bring in your current stock</h2><p class="muted">Copy the cars already on the website, with their photos and details, into the Desk. Then add what each one cost you.</p><button class="btn block" id="imp">Import cars from the website</button></section>` : ""}
+    ${noCost.length ? `<div class="flag"><p style="margin:0"><b>${noCost.length} car${noCost.length > 1 ? "s need" : " needs"} a purchase price</b> so the accounts are right: ${noCost.map(c => `<a href="#car/${c.id}">${esc(c.stock_id || c.reg)}</a>`).join(", ")}</p></div>` : ""}
     <div class="chips" role="group" aria-label="Filter">${chips.map(([k, l]) => `<button aria-pressed="${k === f}" data-f="${k}">${l} ${k === "stock" ? `(${list.filter(c => c.status !== "sold").length})` : ""}</button>`).join("")}</div>
     <div class="panel tight"><div class="list">${shown.length ? shown.map(c => `<a href="#car/${c.id}"><div class="thumb" style="${thumbs[c.id] ? `background-image:url('${thumbs[c.id]}')` : ""}">${thumbs[c.id] ? "" : "No photo"}</div><div class="grow"><div class="t">${esc(carTitle(c))}</div><div class="s">${c.stock_id ? `<b>${esc(c.stock_id)}</b> · ` : ""}<span class="plate">${esc(c.reg)}</span> ${c.asking_price ? money(c.asking_price) : ""}${c.published && c.status !== "sold" ? " · on website" : ""} ${c.sample ? '<span class="tag sample-t">Sample</span>' : ""}</div></div><span class="tag ${c.status}">${stageLabel(CAR_STAGES, c.status)}</span></a>`).join("") : `<div class="empty">No cars here yet.</div>`}</div></div>`,
     mount() {
@@ -274,7 +292,7 @@ async function car(id) {
   const txLabel = { purchase: "Purchase", expense: "Cost", deposit: "Deposit in", part_payment: "Part-payment in", balance: "Balance in", refund: "Refund out" };
   return {
     title: c.reg, back: "#cars", keepScroll: (() => { const k = car.lastId === id; car.lastId = id; return k; })(),
-    html: `
+    html: `<div class="cols"><div class="col">
     <section class="panel">
       <div class="row between"><div class="grow"><h1>${esc(carTitle(c))}</h1><p class="muted">${c.stock_id ? `<b>Stock no. ${esc(c.stock_id)}</b>` : `<button class="btn" id="giveid" style="min-height:36px">Give it a stock number</button>`}${c.variant ? " · " + esc(c.variant) : ""}</p></div><span class="plate">${esc(c.reg)}</span></div>
       ${c.sample ? `<p><span class="tag sample-t">Sample record</span></p>` : ""}
@@ -294,8 +312,8 @@ async function car(id) {
       <button class="btn block" id="sharelist">Share listing photos</button>` : `<p class="muted">Take the five checklist photos first. Originals are kept, plus a smaller copy for listings.</p>`}
     </section>
 
+    </div><div class="col">
     ${websitePanel(c, photos)}
-
     <section class="panel">
       <div class="row between"><h2>Costs and money</h2><a class="small" href="#money-car/${c.id}">Full breakdown</a></div>
       ${!f.purchase ? `<form class="flag" id="paid" style="display:grid;gap:8px"><b>What did you pay for this car?</b><div class="btns"><label class="f">Amount (£)<input class="i" name="amount" type="number" inputmode="decimal" step="0.01" required></label><label class="f">Date<input class="i" name="date" type="date" value="${esc(c.purchase_date || todayISO())}"></label></div><button class="btn primary">Save purchase price</button></form>` : ""}
@@ -325,7 +343,7 @@ async function car(id) {
       </form>
     </details>
     ${c.status !== "sold" ? `<a class="btn navy block" href="#handover/new/${c.id}">Start handover for this car</a>` : ""}
-    <button class="btn danger block" id="del">Delete car</button>`,
+    <button class="btn danger block" id="del">Delete car</button></div></div>`,
     mount() {
       $("#stage").onchange = async e => {
         const to = e.target.value;
