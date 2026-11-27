@@ -214,14 +214,15 @@ async function today() {
 }
 
 /* ---------------- Cars ---------------- */
-async function photoUrl(p, size = "thumb") { if (!p) return ""; return S.store.fileUrl(size === "thumb" ? p.thumb_path : size === "listing" ? p.listing_path : p.original_path); }
+async function photoUrl(p, size = "thumb") { if (!p) return ""; if (S.mode === "github" && p.web_path && !S.store.fileCache.has(p.listing_path)) return size === "thumb" ? `/.netlify/images?url=${encodeURIComponent("/" + p.web_path)}&w=480&q=70` : "/" + p.web_path; return S.store.fileUrl(size === "thumb" ? p.thumb_path : size === "listing" ? p.listing_path : p.original_path); }
 
 async function cars(filter) {
   const [list, photos, txAll] = await Promise.all([S.store.list("cars"), S.store.list("photos"), S.store.list("transactions")]);
   const f = filter || "stock";
   const noCost = list.filter(c => !OUT.includes(c.status) && !c.sor && !c.sample && !txAll.some(t => t.car_id === c.id && t.type === "purchase"));
   const shown = list.filter(c => f === "stock" ? !OUT.includes(c.status) : f === "sor" ? c.sor : f === "all" ? true : c.status === f).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-  const thumbs = {}; for (const c of shown) { const p = photos.find(p => p.id === c.cover_photo) || photos.filter(p => p.car_id === c.id).sort((a, b) => a.order - b.order)[0]; thumbs[c.id] = p ? await photoUrl(p) : ""; }
+  const thumbs = {}; for (const c of shown) { const p = photos.find(p => p.id === c.cover_photo) || photos.filter(p => p.car_id === c.id).sort((a, b) => a.order - b.order)[0]; thumbs[c.id] = p ? photoUrl(p) : ""; }
+  await Promise.all(Object.keys(thumbs).map(async k => { thumbs[k] = await thumbs[k]; }));
   const chips = [["stock", "In stock"], ...CAR_STAGES.filter(x => x[0] !== "returned"), ...(list.some(c => c.sor) ? [["sor", "Sale or return"]] : []), ["all", "All"]];
   return {
     title: "Stock",
@@ -293,7 +294,7 @@ async function car(id) {
   const c = await S.store.get("cars", id); if (!c) return { title: "Not found", back: "#cars", html: `<div class="empty">This car has been removed.</div>` };
   const [photosAll, txs, leadsAll, viewingsAll] = await Promise.all([S.store.list("photos"), S.store.list("transactions"), S.store.list("leads"), S.store.list("viewings")]);
   const photos = photosAll.filter(p => p.car_id === id).sort((a, b) => a.order - b.order);
-  const urls = {}; for (const p of photos) urls[p.id] = await photoUrl(p);
+  const urls = {}; await Promise.all(photos.map(async p => { urls[p.id] = await photoUrl(p); }));
   const have = new Set(photos.map(p => p.slot));
   const f = carFigures(c, txs, S.settings);
   const ctx = txs.filter(t => t.car_id === id).sort((a, b) => (a.date || "").localeCompare(b.date || ""));

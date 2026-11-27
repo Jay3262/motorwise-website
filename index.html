@@ -981,7 +981,7 @@ function soonArt(v,big){
  return `<svg viewBox="0 0 800 500" role="img" aria-label="Photos of this ${esc(title(v))} coming soon" preserveAspectRatio="xMidYMid slice"><rect width="800" height="500" fill="#F3F6F7"/><path d="M0 488h800" stroke="#A9E6D8" stroke-width="12" stroke-dasharray="56 36"/><circle cx="400" cy="200" r="62" fill="#087C70"/><g transform="translate(364 164) scale(3)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></g><text x="400" y="325" text-anchor="middle" font-family="Atkinson Hyperlegible Next,sans-serif" font-weight="800" font-size="46" fill="#101F32">Photos coming soon</text><text x="400" y="368" text-anchor="middle" font-family="Atkinson Hyperlegible Next,sans-serif" font-weight="500" font-size="24" fill="#46566a">Real photos of this car on the way</text></svg>`}
 const CDN=CONFIG.forms==="netlify";
 const isrc=(p,w)=>CDN&&p.startsWith("/")?`/.netlify/images?url=${encodeURIComponent(p)}&w=${w}&q=72`:p;
-const img=(p,w,alt,eager)=>`<img src="${isrc(p,w)}" alt="${esc(alt)}" ${eager?'fetchpriority="high"':'loading="lazy"'} decoding="async" onerror="this.onerror=null;this.src='${p}'" style="width:100%;height:100%;object-fit:cover;display:block">`;
+const img=(p,w,alt,eager)=>`<img src="${isrc(p,w)}" ${CDN&&p.startsWith("/")?`srcset="${[Math.round(w/2),w].map(x=>`${isrc(p,x)} ${x}w`).join(", ")}" sizes="(max-width:600px) 100vw, ${Math.min(w,720)}px"`:""} alt="${esc(alt)}" ${eager?'fetchpriority="high"':'loading="lazy"'} decoding="async" onerror="this.onerror=null;this.src='${p}'" style="width:100%;height:100%;object-fit:cover;display:block">`;
 const pic=(v,opt)=>v.photos&&v.photos.length?img(v.photos[0],720,`${v.year} ${title(v)}`):soonArt(v);
 const gallery=v=>{
  if(!v.photos||!v.photos.length) return [{label:"Photos coming soon",svg:()=>soonArt(v,true)}];
@@ -1243,7 +1243,7 @@ PAGES.home=()=>{
  const under=m=>live.filter(v=>v.price&&v.price<=m).length;
  return `
  <section class="hero" aria-labelledby="h1">
-  <img class="hbg" src="images/yard.jpg" alt="" fetchpriority="high">
+  <img class="hbg" src="${isrc("/images/yard.jpg",1600)}" ${CDN?`srcset="${[640,1024,1600].map(x=>`${isrc("/images/yard.jpg",x)} ${x}w`).join(", ")}" sizes="100vw"`:""} alt="" fetchpriority="high" decoding="async">
   <div class="wrap hin">
    <div class="htxt">
     <p class="kick">${ICON.pin}<span>Ramsden Road, Hereford</span></p>
@@ -1761,7 +1761,16 @@ if(CONFIG.forms==="demo")$("#demobar").hidden=false;
 if(CONFIG.whatsapp)document.body.insertAdjacentHTML("beforeend",`<a class="fab" href="${waHref("Hi, I have a question about one of your cars.")}" target="_blank" rel="noopener" aria-label="WhatsApp us">${ICON.chat}<span>WhatsApp us</span></a>`);
 window.addEventListener("hashchange",route);
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("#mnav").dataset.open==="true"){menu(false);$("#menubtn").focus()}});
-fetch("/data/stock.json",{cache:"no-cache"}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(d=>{STOCK=(d.cars||[]).map(normalise)}).catch(e=>{console.error("Stock could not load",e);STOCK_ERR=true}).finally(route);
+{ let cached=null; try{cached=JSON.parse(localStorage.getItem("mw-stock")||"null")}catch{}
+  if(cached&&cached.cars){STOCK=cached.cars.map(normalise);route()}
+  fetch("/data/stock.json",{cache:"no-cache"}).then(r=>r.ok?r.text():Promise.reject(r.status)).then(t=>{
+   const fresh=!cached||JSON.stringify(cached)!==JSON.stringify(JSON.parse(t));
+   try{localStorage.setItem("mw-stock",t)}catch{}
+   STOCK=(JSON.parse(t).cars||[]).map(normalise);STOCK_ERR=false;
+   // only redraw pages that show stock, so nobody loses a half-filled form
+   const r=(location.hash.slice(1).split("--")[0]||"home");
+   if(!cached||(fresh&&(r==="home"||r==="used-cars"||r.startsWith("car-")))){const y=scrollY;route();if(cached)scrollTo(0,y)}
+  }).catch(e=>{console.error("Stock could not load",e);if(!cached){STOCK_ERR=true;route()}}); }
 }
 </script>
 </body>

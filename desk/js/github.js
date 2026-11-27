@@ -81,23 +81,45 @@ export class GitHub {
   }
 }
 
+const CACHE_KEY = "mw-desk-cache-v2";
+const PHOTO_CACHE = "mw-photos";
+// git's own id for a file, so we know which tables changed without downloading them
+async function gitSha(text) { const body = new TextEncoder().encode(text); const head = new TextEncoder().encode(`blob ${body.length}\0`); const all = new Uint8Array(head.length + body.length); all.set(head); all.set(body, head.length); const h = await crypto.subtle.digest("SHA-1", all); return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+
 export class GitHubStore {
   constructor(cfg) {
     this.kind = "github"; this.cfg = cfg; this.listeners = new Set();
     this.books = `${cfg.owner}/${cfg.books}`; this.site = `${cfg.owner}/${cfg.site}`; this.branch = cfg.branch || "main";
-    this.data = {}; this.paths = new Map(); this.fileCache = new Map();
-    this.dirty = new Set(); this.pendingFiles = {}; this.chain = Promise.resolve(); this.status = "saved";
+    this.data = {}; this.paths = new Map(); this.tableShas = {}; this.head = null; this.fileCache = new Map();
+    this.ops = {}; this.pendingFiles = {}; this.chain = Promise.resolve(); this.status = "saved";
   }
   get token() { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } }
+  readCache() { try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return c && c.books === this.books ? c : null; } catch { return null; } }
+  writeCache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ books: this.books, me: this.me, head: this.head, tableShas: this.tableShas, paths: [...this.paths], data: this.data })); } catch { } }
   async init() {
     for (const t of TABLES) this.data[t] = [];
     if (!this.token) return;
     this.gh = new GitHub(this.token);
-    try { this.me = await this.gh.me(); }
-    catch (e) { if (e.status === 401) { this.forget(); return; } throw e; }
-    await this.ensureBooks();
-    await this.load();
+    const c = this.readCache();
+    if (c && c.me) {
+      // Open instantly from what's on this device, then check GitHub in the background.
+      Object.assign(this, { me: c.me, head: c.head, tableShas: c.tableShas || {}, paths: new Map(c.paths || []) });
+      for (const t of TABLES) this.data[t] = (c.data && c.data[t]) || [];
+      this.loadedAt = 0;
+      this.revalidate();
+    } else {
+      try { this.me = await this.gh.me(); } catch (e) { if (e.status === 401) { this.forget(); return; } throw e; }
+      await this.ensureBooks(); await this.load();
+    }
     window.addEventListener("beforeunload", e => { if (this.status !== "saved") { e.preventDefault(); e.returnValue = ""; } });
+    setInterval(() => { if (document.visibilityState === "visible") this.checkRemote(); }, 30000);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") this.checkRemote(); });
+  }
+  async revalidate() {
+    try { this.me = await this.gh.me(); }
+    catch (e) { if (e.status === 401) { this.forget(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.reload(); } return; }
+    try { await this.gh.repo(this.books); } catch (e) { if (e.status === 404) { this.forget(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.reload(); return; } }
+    this.checkRemote();
   }
   forget() { try { localStorage.removeItem(TOKEN_KEY); } catch { } this.me = null; this.gh = null; }
   async ensureBooks() {
@@ -110,34 +132,58 @@ export class GitHubStore {
       await new Promise(r => setTimeout(r, 1500));
     }
   }
-  async load() {
-    const head = await this.gh.head(this.books, this.branch);
+  // Fetch only what changed since we last looked. Returns true if anything did.
+  async load(head) {
+    head = head || await this.gh.head(this.books, this.branch);
+    if (head === this.head) { this.loadedAt = Date.now(); return false; }
     const { entries } = await this.gh.tree(this.books, head);
     this.paths = new Map(entries.filter(e => e.type === "blob").map(e => [e.path, e.sha]));
+    let changed = false;
     await Promise.all(TABLES.map(async t => {
-      const sha = this.paths.get(`${DB_DIR}/${t}.json`);
-      if (!sha) { this.data[t] = []; return; }
-      try { this.data[t] = JSON.parse(b64ToText(await this.gh.blob(this.books, sha))); } catch { this.data[t] = []; }
+      const sha = this.paths.get(`${DB_DIR}/${t}.json`) || null;
+      if (sha === (this.tableShas[t] || null)) return;
+      changed = true;
+      try { this.data[t] = sha ? JSON.parse(b64ToText(await this.gh.blob(this.books, sha))) : []; } catch { this.data[t] = []; }
+      this.tableShas[t] = sha;
     }));
-    this.loadedAt = Date.now();
+    this.head = head; this.loadedAt = Date.now();
+    this.applyOps(); this.writeCache();
+    return changed;
   }
-  async refresh() { if (this.status !== "saved") return false; await this.load(); for (const f of this.listeners) f("*", true); return true; }
+  applyOps() {
+    for (const [t, m] of Object.entries(this.ops)) {
+      let rows = [...(this.data[t] || [])];
+      for (const [id, row] of m) { const i = rows.findIndex(r => r.id === id); if (row === null) { if (i >= 0) rows.splice(i, 1); } else if (i >= 0) rows[i] = row; else rows.push(row); }
+      this.data[t] = rows;
+    }
+  }
+  async checkRemote() {
+    if (!this.gh || this.checking || this.status !== "saved" || Date.now() - (this.loadedAt || 0) < 8000) return;
+    this.checking = true;
+    try { if (await this.load()) this.emit("*", true); } catch { } finally { this.checking = false; }
+  }
+  async refresh() { this.loadedAt = 0; await this.checkRemote(); return true; }
 
   // ---- same API as LocalStore / SupaStore ----
   async user() { if (!this.me) return null; const st = (this.data.settings || [])[0]; const t = st && (st.team || []).find(x => (x.email || "").toLowerCase() === this.me.login.toLowerCase()); return { id: this.me.login, email: this.me.login, name: (t && t.name) || this.me.name || this.me.login }; }
-  async signIn() { const token = await githubLogin({ siteId: this.cfg.siteId || location.hostname }); try { localStorage.setItem(TOKEN_KEY, token); } catch { } await this.init(); return this.user(); }
-  async signOut() { await this.flush(); this.forget(); }
+  async signIn() { const token = await githubLogin({ siteId: this.cfg.siteId || location.hostname }); try { localStorage.setItem(TOKEN_KEY, token); localStorage.removeItem(CACHE_KEY); } catch { } this.head = null; this.tableShas = {}; await this.init(); return this.user(); }
+  async signOut() { await this.flush(); this.forget(); try { localStorage.removeItem(CACHE_KEY); } catch { } }
   async list(t) { return (this.data[t] || []).map(r => ({ ...r })); }
   async get(t, id) { const r = (this.data[t] || []).find(x => x.id === id); return r ? { ...r } : null; }
-  async insert(t, row) { row = { id: uid(), created_at: nowIso(), ...row }; this.data[t] = [...(this.data[t] || []), row]; this.touch(t); return { ...row }; }
-  async update(t, id, patch) { let out = null; this.data[t] = (this.data[t] || []).map(r => r.id === id ? (out = { ...r, ...patch, id, updated_at: nowIso() }) : r); this.touch(t); return out && { ...out }; }
-  async remove(t, id) { this.data[t] = (this.data[t] || []).filter(r => r.id !== id); this.touch(t); }
+  op(t, id, row) { (this.ops[t] ||= new Map()).set(id, row); }
+  async insert(t, row) { row = { id: uid(), created_at: nowIso(), ...row }; this.data[t] = [...(this.data[t] || []), row]; this.op(t, row.id, row); this.touch(t); return { ...row }; }
+  async update(t, id, patch) { let out = null; this.data[t] = (this.data[t] || []).map(r => r.id === id ? (out = { ...r, ...patch, id, updated_at: nowIso() }) : r); if (out) this.op(t, id, out); this.touch(t); return out && { ...out }; }
+  async remove(t, id) { this.data[t] = (this.data[t] || []).filter(r => r.id !== id); this.op(t, id, null); this.touch(t); }
   async putFile(path, blob) { this.pendingFiles[`${FILE_DIR}/${path}`] = blob; this.fileCache.set(path, blob); this.schedule(); return path; }
   async fileBlob(path) {
     if (!path) return null;
     if (this.fileCache.has(path)) return this.fileCache.get(path);
     const sha = this.paths.get(`${FILE_DIR}/${path}`); if (!sha) return null;
-    const blob = b64ToBlob(await this.gh.blob(this.books, sha), mimeOf(path)); this.fileCache.set(path, blob); return blob;
+    const key = `/__mw-photo/${sha}`;
+    try { const c = await caches.open(PHOTO_CACHE); const hit = await c.match(key); if (hit) { const b = await hit.blob(); this.fileCache.set(path, b); return b; } } catch { }
+    const blob = b64ToBlob(await this.gh.blob(this.books, sha), mimeOf(path)); this.fileCache.set(path, blob);
+    try { const c = await caches.open(PHOTO_CACHE); await c.put(key, new Response(blob, { headers: { "Content-Type": blob.type } })); } catch { }
+    return blob;
   }
   async fileUrl(path) { const b = await this.fileBlob(path); return b ? URL.createObjectURL(b) : ""; }
   async nextInvoiceNumber() { const st = this.data.settings[0]; const n = st.next_invoice_number; await this.update("settings", st.id, { next_invoice_number: n + 1 }); await this.flush(); return `${st.invoice_prefix}-${n}`; }
@@ -152,26 +198,45 @@ export class GitHubStore {
   onChange(fn) { this.listeners.add(fn); }
   emit(t, remote = false) { if (!remote) this.lastWrite = Date.now(); for (const f of this.listeners) f(t, remote); }
 
-  // ---- saving: changes are batched into one commit a moment after the last edit ----
-  touch(t) { this.dirty.add(t); this.emit(t); this.schedule(); }
-  schedule() { this.setStatus("pending"); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 900); }
+  // ---- saving: edits are batched into one commit; if someone else saved in between, their changes are kept and ours applied on top ----
+  touch(t) { this.writeCache(); this.emit(t); this.schedule(); }
+  schedule() { this.setStatus("pending"); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 700); }
   setStatus(s, err) { this.status = s; this.lastError = err || null; document.dispatchEvent(new CustomEvent("desk-save", { detail: { status: s, error: err } })); }
   flush() {
     clearTimeout(this.timer);
     this.chain = this.chain.then(async () => {
-      if (!this.dirty.size && !Object.keys(this.pendingFiles).length) { if (this.status !== "error") this.setStatus("saved"); return; }
-      const tables = [...this.dirty]; const files = { ...this.pendingFiles };
-      this.dirty.clear(); this.pendingFiles = {};
-      for (const t of tables) files[`${DB_DIR}/${t}.json`] = JSON.stringify(this.data[t], null, 1);
+      const ops = this.ops, files = this.pendingFiles;
+      if (!Object.keys(ops).length && !Object.keys(files).length) { if (this.status !== "error") this.setStatus("saved"); return; }
+      this.ops = {}; this.pendingFiles = {};
       this.setStatus("saving");
       try {
-        await this.gh.commit(this.books, this.branch, files, `Desk: ${tables.length ? "update " + tables.join(", ") : "save files"} (${this.me.login})`);
-        const head = await this.gh.head(this.books, this.branch); const { entries } = await this.gh.tree(this.books, head);
-        this.paths = new Map(entries.filter(e => e.type === "blob").map(e => [e.path, e.sha]));
-        this.setStatus(this.dirty.size || Object.keys(this.pendingFiles).length ? "pending" : "saved");
+        // upload photos once (in parallel); their ids don't change between retries
+        const fileShas = {};
+        await Promise.all(Object.entries(files).map(async ([path, blob]) => { const b = await this.gh.req(`/repos/${this.books}/git/blobs`, { method: "POST", body: JSON.stringify({ content: await blobToB64(blob), encoding: "base64" }) }); fileShas[path] = b.sha; }));
+        for (let attempt = 0; ; attempt++) {
+          const head = await this.gh.head(this.books, this.branch);
+          if (head !== this.head) { const keep = this.ops; this.ops = ops; await this.load(head); this.ops = keep; this.applyOps(); }
+          const tree = Object.entries(fileShas).map(([path, sha]) => ({ path, mode: "100644", type: "blob", sha }));
+          const written = {};
+          for (const t of Object.keys(ops)) { const text = JSON.stringify(this.data[t], null, 1); written[t] = text; tree.push({ path: `${DB_DIR}/${t}.json`, mode: "100644", type: "blob", content: text }); }
+          const base = (await this.gh.req(`/repos/${this.books}/git/commits/${head}`)).tree.sha;
+          const tr = await this.gh.req(`/repos/${this.books}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: base, tree }) });
+          const c = await this.gh.req(`/repos/${this.books}/git/commits`, { method: "POST", body: JSON.stringify({ message: `Desk: update ${Object.keys(ops).join(", ") || "photos"} (${this.me.login})`, tree: tr.sha, parents: [head] }) });
+          try { await this.gh.req(`/repos/${this.books}/git/refs/heads/${this.branch}`, { method: "PATCH", body: JSON.stringify({ sha: c.sha }) }); }
+          catch (e) { if (e.status === 422 && attempt < 4) continue; throw e; }
+          this.head = c.sha;
+          for (const [p, sha] of Object.entries(fileShas)) this.paths.set(p, sha);
+          for (const [t, text] of Object.entries(written)) { const sha = await gitSha(text); this.tableShas[t] = sha; this.paths.set(`${DB_DIR}/${t}.json`, sha); }
+          break;
+        }
+        this.loadedAt = Date.now(); this.writeCache();
+        const more = Object.keys(this.ops).length || Object.keys(this.pendingFiles).length;
+        this.setStatus(more ? "pending" : "saved"); if (more) this.schedule();
       } catch (e) {
-        for (const t of tables) this.dirty.add(t); Object.assign(this.pendingFiles, Object.fromEntries(Object.entries(files).filter(([p]) => p.startsWith(FILE_DIR + "/"))));
-        this.setStatus("error", e.message); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 8000);
+        // put the unsaved edits back (newer edits made meanwhile win) and retry shortly
+        for (const [t, m] of Object.entries(ops)) { const cur = this.ops[t] || new Map(); for (const [id, row] of m) if (!cur.has(id)) cur.set(id, row); this.ops[t] = cur; }
+        this.pendingFiles = { ...files, ...this.pendingFiles };
+        this.setStatus("error", e.message); clearTimeout(this.timer); this.timer = setTimeout(() => this.flush(), 6000);
       }
     });
     return this.chain;
