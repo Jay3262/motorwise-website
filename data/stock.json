@@ -1,6 +1,31 @@
 {
   "cars": [
     {
+      "id": "MW005",
+      "status": "available",
+      "plate": "CK11 KYB",
+      "make": "BMW",
+      "model": "1 Series",
+      "trim": "118D",
+      "year": 2011,
+      "reg": "2011 (11)",
+      "price": 1495,
+      "mileage": 999,
+      "mileageApprox": false,
+      "fuel": "Diesel",
+      "trans": "Manual",
+      "colour": "White",
+      "motFull": "1 November 2027",
+      "desc": "2011 BMW 118d 2.0 Diesel – Coming Soon\n\nComing soon to Motorwise Hereford is this BMW 118d, finished in white with alloy wheels and a sporty three-door hatchback design.\n\nPowered by a 2.0-litre diesel engine, this BMW offers a great combination of everyday practicality, fuel economy and premium styling without the premium price tag.\n\nAn ideal option for commuting, longer journeys or anyone looking for an affordable BMW.\n\nVehicle details:\n\n* Year: 2011\n* Engine: 2.0-litre diesel\n* Colour: White\n* Body style: Three-door hatchback\n* Registration: CK11 KYB\n* CO₂ emissions: 119g/km\n* First registered: 6 June 2011\n\nCurrently awaiting preparation.\n\nFull vehicle details, mileage, condition report and pricing will be available shortly. Register your interest today.\n\nWhy buy from Motorwise Hereford?\n\n* Affordable everyday cars\n* Honest vehicle descriptions\n* Clear pricing with no admin fees\n* All known faults disclosed\n\n📍 Ramsden Road, Hereford, HR2 6RQ\n📞 07424 947219\n🌐 www.motorwisehereford.co.uk\n\nViewings by appointment.",
+      "equip": [],
+      "issues": [],
+      "photos": [
+        "/images/stock/ck11kyb/28cec841-eaf.jpg"
+      ],
+      "featured": false,
+      "added": "2026-11-27"
+    },
+    {
       "id": "MW001",
       "status": "available",
       "plate": "VK10 ODL",
