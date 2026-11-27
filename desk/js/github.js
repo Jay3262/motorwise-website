@@ -104,7 +104,7 @@ export class GitHubStore {
     try { await this.gh.repo(this.books); }
     catch (e) {
       if (e.status !== 404) throw e;
-      if (this.me.login.toLowerCase() !== this.cfg.owner.toLowerCase()) throw new Error(`This GitHub account (${this.me.login}) doesn't have access to the Motorwise books. Ask the owner to add you as a collaborator on ${this.books}.`);
+      if (this.me.login.toLowerCase() !== this.cfg.owner.toLowerCase()) { this.forget(); throw new Error(`This GitHub account (${this.me.login}) doesn't have access yet. Ask the owner to add you under Admin → Team, then accept the invitation GitHub emails you, and sign in again.`); }
       await this.gh.req("/user/repos", { method: "POST", body: JSON.stringify({ name: this.cfg.books, private: true, auto_init: true, description: "Motorwise Desk: private business records. Do not make public." }) });
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -174,6 +174,19 @@ export class GitHubStore {
       }
     });
     return this.chain;
+  }
+
+  // ---- staff: collaborators on both repos (books = private records, site = website) ----
+  async inviteStaff(login) {
+    try { await this.gh.req(`/users/${encodeURIComponent(login)}`); } catch (e) { if (e.status === 404) throw new Error(`No GitHub account called "${login}". Check the spelling.`); throw e; }
+    for (const repo of [this.books, this.site]) await this.gh.req(`/repos/${repo}/collaborators/${encodeURIComponent(login)}`, { method: "PUT", body: JSON.stringify({ permission: "push" }) });
+  }
+  async removeStaff(login) {
+    for (const repo of [this.books, this.site]) {
+      await this.gh.req(`/repos/${repo}/collaborators/${encodeURIComponent(login)}`, { method: "DELETE" }).catch(e => { if (e.status !== 404) throw e; });
+      const inv = await this.gh.req(`/repos/${repo}/invitations`).catch(() => []);
+      for (const i of inv || []) if ((i.invitee && i.invitee.login || "").toLowerCase() === login.toLowerCase()) await this.gh.req(`/repos/${repo}/invitations/${i.id}`, { method: "DELETE" }).catch(() => { });
+    }
   }
 
   // ---- website (public repo) ----

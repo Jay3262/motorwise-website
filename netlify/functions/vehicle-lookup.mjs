@@ -4,7 +4,8 @@
 //   DVLA_API_KEY                         Vehicle Enquiry Service key (make, colour, fuel, year, engine, MOT expiry)
 //   MOT_CLIENT_ID, MOT_CLIENT_SECRET,    DVSA MOT History API credentials (model, mileage history, advisories)
 //   MOT_API_KEY, MOT_TOKEN_URL
-//   DESK_GITHUB_USERS (optional)         comma-separated GitHub usernames allowed to use this (default Jay3262)
+//   Access: anyone who can open the private books repo (DESK_BOOKS_REPO, default Jay3262/motorwise-books).
+//   DESK_GITHUB_USERS (optional)         extra comma-separated GitHub usernames to allow
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const env = k => (globalThis.Netlify?.env?.get?.(k)) ?? process.env[k];
 const iso = d => d ? String(d).slice(0, 10).replace(/\./g, "-") : null;
@@ -17,8 +18,12 @@ async function signedInUser(req) {
   const r = await fetch("https://api.github.com/user", { headers: { Authorization: `Bearer ${token}`, "User-Agent": "motorwise-desk" } });
   if (!r.ok) return null;
   const u = await r.json();
-  const allowed = (env("DESK_GITHUB_USERS") || "Jay3262").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  return allowed.includes(String(u.login).toLowerCase()) ? u.login : null;
+  const allowed = (env("DESK_GITHUB_USERS") || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (allowed.includes(String(u.login).toLowerCase())) return u.login;
+  // Anyone the owner has added to the private books repo (Desk → Admin → Team) can use lookup.
+  const books = env("DESK_BOOKS_REPO") || "Jay3262/motorwise-books";
+  const b = await fetch(`https://api.github.com/repos/${books}`, { headers: { Authorization: `Bearer ${token}`, "User-Agent": "motorwise-desk" } });
+  return b.ok ? u.login : null;
 }
 
 async function dvla(reg) {

@@ -1123,7 +1123,14 @@ async function admin(section) {
       <div class="list" style="margin:0 -16px">${tpls.map(t => `<button data-tpl="${t.id}"><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">Version ${t.version}${t.approved_at ? ` · approved by ${esc(nameOf(t.approved_by))} ${fmtDate(t.approved_at)}` : ""}</div></div><span class="tag ${t.status === "approved" ? "sent" : "draft"}">${t.status === "approved" ? "Approved" : "Draft"}</span></button>`).join("")}</div></details>
 
     <details class="panel" ${open("team")}><summary><h2 style="display:inline">Team</h2></summary>
-      ${S.live ? `<div style="margin-top:12px">${S.team.map(t => `<p>${esc(t.name)} · <span class="muted">${esc(t.email)}</span></p>`).join("")}<p class="muted">Add or remove people in Supabase (see SETUP.md, step 3).</p></div>`
+      ${S.mode === "github" ? `<div style="margin-top:12px;display:grid;gap:12px">
+        <div class="list" style="margin:0 -16px">${S.team.map((t, i) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line)"><div class="grow"><div class="t">${esc(t.name)}</div><div class="s">GitHub: ${esc(t.email)}${t.email.toLowerCase() === CONFIG.GITHUB.owner.toLowerCase() ? " · owner" : t.invited ? ` · invited ${fmtDate(t.invited)}` : ""}</div></div>${t.email.toLowerCase() === CONFIG.GITHUB.owner.toLowerCase() || t.email.toLowerCase() === S.user.email.toLowerCase() ? "" : `<button class="btn danger" data-rm="${i}" style="min-height:40px">Remove</button>`}</div>`).join("")}</div>
+        ${S.user.email.toLowerCase() === CONFIG.GITHUB.owner.toLowerCase() ? `<form id="addstaff" style="display:grid;gap:12px"><h3 style="margin:8px 0 0">Add a staff member</h3>
+          <p class="muted" style="margin:0">They need a free GitHub account first (github.com/signup). Then put their name and GitHub username here. They'll get an email invitation from GitHub to accept, and after that they sign in at motorwisehereford.co.uk/desk.</p>
+          <div class="btns"><label class="f">Name<input class="i" name="name" required placeholder="Tom"></label><label class="f">GitHub username<input class="i" name="login" required autocapitalize="off" autocomplete="off" placeholder="e.g. tom-smith"></label></div>
+          <button class="btn primary block">Invite</button></form>` : `<p class="muted">Only the owner can add or remove staff.</p>`}
+        <p class="muted" style="margin:0">Staff can see and edit everything in the Desk, including the accounts, and publish cars to the website.</p></div>`
+      : S.live ? `<div style="margin-top:12px">${S.team.map(t => `<p>${esc(t.name)} · <span class="muted">${esc(t.email)}</span></p>`).join("")}<p class="muted">Add or remove people in Supabase (see SETUP.md, step 3).</p></div>`
         : `<form id="team" style="display:grid;gap:12px;margin-top:12px">${S.team.map((t, i) => `<div class="btns"><label class="f">Name<input class="i" name="n${i}" value="${esc(t.name)}"></label><label class="f">Email<input class="i" name="e${i}" value="${esc(t.email)}"></label></div>`).join("")}<button class="btn block">Save names</button></form>`}</details>
 
     <details class="panel" ${open("notify")} ${section === "notify" ? "open" : ""}><summary><h2 style="display:inline">Notifications</h2></summary>
@@ -1153,6 +1160,23 @@ async function admin(section) {
       <p class="muted">WhatsApp messages are logged by pasting them into a lead. Automatic import needs the WhatsApp Business Platform (a separate number and a Meta business account).</p></div></details>
     <p class="muted" style="text-align:center">Motorwise Desk · ${S.live ? "Live" : "Sample mode"}</p>`,
     mount() {
+      const as = $("#addstaff"); if (as) as.onsubmit = async e => {
+        e.preventDefault(); const d = formData(e.target); const login = String(d.login || "").trim().replace(/^@/, "");
+        if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) return toast("That isn't a valid GitHub username", true);
+        if (S.team.some(t => t.email.toLowerCase() === login.toLowerCase())) return toast("They're already on the team", true);
+        const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Inviting…";
+        try {
+          await S.store.inviteStaff(login);
+          const team = [...S.team, { name: d.name.trim(), email: login, invited: new Date().toISOString() }];
+          await S.store.update("settings", S.settings.id, { team }); await S.store.flush();
+          await audit("staff_invited", { login }); toast(`Invited ${d.name}. Ask them to accept the GitHub email, then sign in at /desk.`); render();
+        } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = "Invite"; }
+      };
+      $$("[data-rm]").forEach(btn => btn.onclick = async () => {
+        const t = S.team[Number(btn.dataset.rm)]; if (!confirm(`Remove ${t.name}? They'll lose access to the Desk and the website admin straight away.`)) return;
+        try { await S.store.removeStaff(t.email); await S.store.update("settings", S.settings.id, { team: S.team.filter(x => x !== t) }); await S.store.flush(); await audit("staff_removed", { login: t.email }); toast(`${t.name} removed`); render(); }
+        catch (err) { toast(err.message, true); }
+      });
       $("#out").onclick = async () => { await S.store.signOut(); S.user = null; location.hash = ""; render(); };
       $("#biz").onsubmit = async e => { e.preventDefault(); await S.store.update("settings", b.id, formData(e.target)); toast("Saved"); render(); };
       const tf = $("#team"); if (tf) tf.onsubmit = async e => { e.preventDefault(); const d = formData(e.target); const team = S.team.map((t, i) => ({ name: d["n" + i] || t.name, email: (d["e" + i] || t.email).toLowerCase() })); await S.store.update("settings", b.id, { team }); toast("Saved"); render(); };
