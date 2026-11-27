@@ -104,7 +104,8 @@ export class GitHubStore {
     try { await this.gh.repo(this.books); }
     catch (e) {
       if (e.status !== 404) throw e;
-      if (this.me.login.toLowerCase() !== this.cfg.owner.toLowerCase()) { this.forget(); throw new Error(`This GitHub account (${this.me.login}) doesn't have access yet. Ask the owner to add you under Admin → Team, then accept the invitation GitHub emails you, and sign in again.`); }
+      const login = this.me.login;
+      if (login.toLowerCase() !== this.cfg.owner.toLowerCase()) { this.forget(); throw new Error(`${login} doesn't have access to the Motorwise records yet. Open github.com/${this.books}/invitations, tap Accept, then sign in again.`); }
       await this.gh.req("/user/repos", { method: "POST", body: JSON.stringify({ name: this.cfg.books, private: true, auto_init: true, description: "Motorwise Desk: private business records. Do not make public." }) });
       await new Promise(r => setTimeout(r, 1500));
     }

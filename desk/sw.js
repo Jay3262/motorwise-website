@@ -1,5 +1,5 @@
 // Motorwise Desk service worker: offline app shell + push notifications.
-const VERSION = "mwdesk-v2";
+const VERSION = "mwdesk-v3";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "js/app.js", "js/ui.js", "js/data.js", "js/calc.js", "js/pdf.js", "js/config.js", "js/github.js", "js/website.js",
   "js/vendor/jspdf.umd.min.js", "fonts/AtkinsonHyperlegibleNext-400.ttf", "fonts/AtkinsonHyperlegibleNext-700.ttf", "fonts/AtkinsonHyperlegibleNext-800.ttf",
   "icons/icon-192.png", "icons/apple-touch-icon.png", "icons/favicon.svg"];
