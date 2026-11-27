@@ -1,6 +1,34 @@
 {
   "cars": [
     {
+      "id": "MW002",
+      "status": "available",
+      "plate": "HY59 YMK",
+      "make": "Renault",
+      "model": "Megane",
+      "trim": "1.6 petrol",
+      "year": 2009,
+      "reg": "2009 (59)",
+      "price": 1395,
+      "mileage": 103000,
+      "mileageApprox": true,
+      "fuel": "Petrol",
+      "engine": "1.6 litre petrol",
+      "engineCc": 1598,
+      "colour": "Black",
+      "body": "Hatchback",
+      "motFull": "15 April 2027",
+      "motNotes": "Passed 16 April 2026 at 103,185 miles. Advisories (things to keep an eye on, not failures): front and rear brake discs worn, nearside rear tyre damaged or perishing, slight corrosion on both rear brake hoses, slight play in the nearside front track rod end, and a worn top mount bush on the nearside front shock absorber.",
+      "desc": "A 2009 Renault Megane 1.6 petrol in black, with about 103,000 miles. It passed its MOT in April 2026 and is MOT'd until 15 April 2027. Photos and condition notes are on the way. Call or WhatsApp us for the price or anything else you want to know.",
+      "equip": [],
+      "issues": [],
+      "photos": [
+        "/images/stock/hy59ymk/54c1091c-717.jpg"
+      ],
+      "featured": false,
+      "added": "2026-11-24"
+    },
+    {
       "id": "MW005",
       "status": "available",
       "plate": "CK11 KYB",
@@ -93,30 +121,6 @@
       "featured": true,
       "added": "2026-11-23",
       "valetPreview": true
-    },
-    {
-      "id": "MW002",
-      "status": "available",
-      "plate": "HY59 YMK",
-      "make": "Renault",
-      "model": "Megane",
-      "trim": "1.6 petrol",
-      "year": 2009,
-      "reg": "2009 (59)",
-      "mileage": 103000,
-      "mileageApprox": true,
-      "fuel": "Petrol",
-      "engine": "1.6 litre petrol",
-      "engineCc": 1598,
-      "colour": "Black",
-      "body": "Hatchback",
-      "motFull": "15 April 2027",
-      "motNotes": "Passed 16 April 2026 at 103,185 miles. Advisories (things to keep an eye on, not failures): front and rear brake discs worn, nearside rear tyre damaged or perishing, slight corrosion on both rear brake hoses, slight play in the nearside front track rod end, and a worn top mount bush on the nearside front shock absorber.",
-      "desc": "A 2009 Renault Megane 1.6 petrol in black, with about 103,000 miles. It passed its MOT in April 2026 and is MOT'd until 15 April 2027. Photos and condition notes are on the way. Call or WhatsApp us for the price or anything else you want to know.",
-      "featured": false,
-      "added": "2026-11-24",
-      "photos": [],
-      "price": 1395
     },
     {
       "id": "MW003",
