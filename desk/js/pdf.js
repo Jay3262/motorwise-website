@@ -261,77 +261,142 @@ const PAYNAME = { deposit: "deposit", part_payment: "part-payment", balance: "pa
 const PAYMETHOD = { cash: "cash", bank: "bank transfer", card: "card", other: "other", part_exchange: "part exchange" };
 
 function sigImg(doc, img, x, y, w, h) { try { const p = doc.getImageProperties(img); const k = Math.min(w / p.width, h / p.height); const iw = p.width * k, ih = p.height * k; doc.addImage(img, "PNG", x, y + (h - ih), iw, ih); } catch { } }
+// Dealer order form in the layout main dealers use (Keyloop Sales Docs style): grey label cells, ruled boxes, a priced summary ledger.
+const GREYF = [233, 236, 240], BOX = [150, 160, 172], DK = [30, 38, 48];
+const dd = iso => iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/ /g, "-") : "";
+function kHead(w, title) {
+  const { doc, ctx } = w; const b = ctx.biz;
+  if (w.started) doc.addPage(); w.started = true;
+  if (LOGO) try { doc.addImage(LOGO, "PNG", A4W / 2 - 39, 10, 11, 11); } catch { }
+  doc.setTextColor(...NAVY); doc.setFont(w.f, "bold"); doc.setFontSize(19); doc.text(b.trading_name || "", A4W / 2 - 25.5, 18.6);
+  doc.setFont(w.f, "normal"); doc.setFontSize(6.8); doc.setTextColor(...DK);
+  const addr = (b.invoice_address || b.viewing_location || "").replace(/\s*\(.*\)$/, "").split(/,\s*|\n/).filter(Boolean);
+  doc.text([...addr, b.phone || "", b.email || ""], A4W - L, 10.5, { align: "right", lineHeightFactor: 1.25 });
+  doc.setFont(w.f, "bold"); doc.setFontSize(10); doc.text(title, L, 27);
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.4); doc.text(`Order ID: ${ctx.invoiceNo || ""}`, L, 31.5);
+  // footer
+  doc.setDrawColor(...BOX); doc.setLineWidth(0.15); doc.line(L, 285.5, A4W - L, 285.5);
+  doc.setFontSize(6.3); doc.setTextColor(...LAB);
+  const legal = [b.legal_name ? `${b.trading_name} is a trading name of ${b.legal_name}.` : "", b.vat_treatment === "not_registered" ? "Not VAT registered." : b.vat_number ? `VAT no. ${b.vat_number}.` : "", b.website || ""].filter(Boolean).join("  ");
+  doc.text(legal, L, 289); doc.text(`Generated ${dt(ctx.issuedAt || new Date().toISOString())}${ctx.versionLabel ? "  ·  " + ctx.versionLabel : ""}`, A4W - L, 289, { align: "right" });
+  w.y = 34;
+  if (ctx.draft) { doc.setFillColor(251, 233, 231); doc.rect(L, w.y, FW, 5.5, "F"); doc.setTextColor(...RED); doc.setFont(w.f, "bold"); doc.setFontSize(7.5); doc.text("DRAFT: the terms wording has not been approved yet (Admin > Wording). Do not issue.", L + 2, w.y + 3.8); w.y += 7; }
+}
+// one labelled cell: grey label part, white value part
+function kc(w, x, y, cw, lw, label, val, h = 5, o = {}) {
+  const { doc } = w;
+  doc.setDrawColor(...BOX); doc.setLineWidth(0.15);
+  doc.setFillColor(...GREYF); doc.rect(x, y, lw, h, "FD"); doc.rect(x + lw, y, cw - lw, h);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.4); doc.setTextColor(...DK); doc.text(label, x + 1.2, y + h / 2 + 1.1);
+  doc.setFont(w.f, o.b ? "bold" : "normal"); let fs = o.s || 7.2; doc.setFontSize(fs);
+  const v = String(val ?? ""); while (fs > 5.4 && doc.getTextWidth(v) > cw - lw - 2.2) { fs -= 0.2; doc.setFontSize(fs); }
+  doc.text(v, o.r ? x + cw - 1.2 : x + lw + 1.2, y + h / 2 + 1.1, o.r ? { align: "right" } : {});
+}
+function kSec(w, t) { const { doc } = w; doc.setFillColor(...GREYF); doc.setDrawColor(...BOX); doc.setLineWidth(0.15); doc.rect(L, w.y, FW, 5, "FD"); doc.setFont(w.f, "bold"); doc.setFontSize(7.8); doc.setTextColor(...NAVY); doc.text(t, L + 1.5, w.y + 3.6); w.y += 5; }
+function kBox(w, x, y, cw, h, label, lines) {
+  const { doc } = w; doc.setDrawColor(...BOX); doc.setLineWidth(0.15); doc.rect(x, y, cw, h);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.4); doc.setTextColor(...DK); doc.text(label, x + 1.2, y + 3);
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.2); doc.text(lines.filter(Boolean), x + 1.2, y + 6.6, { lineHeightFactor: 1.25 });
+}
+
 SECTIONS.order = (w, ctx) => {
   const { doc } = w; const { biz: b, car: c, customer: cu, h } = ctx;
-  letterhead(w, ctx.creditNote ? "Credit Note" : "Vehicle Order Form", [["Order no.", ctx.invoiceNo], ["Order date", d8(ctx.issuedAt)], ["Stock no.", c.stock_id || ""], ["Sale type", { on_premises: "Used · retail · in person", distance: "Used · retail · remote", off_premises: "Used · retail · off premises" }[h.sale_type] || "Used · retail"]]);
-  secHead(w, "Customer");
-  grid(w, [[.42, "Name", cu.name, { b: 1 }], [.24, "Mobile", cu.phone], [.34, "Email", cu.email]]);
-  grid(w, [[.42, "Address", (cu.address || "").replace(/\n/g, ", ")], [.24, "Postcode", cu.postcode], [.34, "Delivery address", h.delivery_fee ? (h.delivery_address || "As customer address") : "Collection from us"]]);
-  w.y += 5; secHead(w, "Vehicle");
-  grid(w, [[.2, "Registration", c.reg, { b: 1 }], [.2, "Make", c.make], [.3, "Model / derivative", [c.model, c.variant].filter(Boolean).join(" ")], [.15, "Year", c.year], [.15, "Colour", c.colour]]);
-  grid(w, [[.2, "Odometer reading", `${Number(h.mileage || c.mileage || 0).toLocaleString("en-GB")} miles`], [.2, "Transmission", c.gearbox], [.3, "Body", c.body || ""], [.15, "Fuel", c.fuel], [.15, "Keys", h.keys ?? c.keys ?? ""]]);
-  grid(w, [[.4, "VIN", c.vin], [.3, "MOT expiry", c.mot_expiry ? d8(c.mot_expiry) : ""], [.3, "Service history", c.service_history || ""]]);
+  kHead(w, ctx.creditNote ? "Credit Note" : "Vehicle Order Form");
+  const third = FW / 3;
+  kc(w, L, w.y, third, 22, "Order Date", dd(ctx.issuedAt));
+  kc(w, L + third, w.y, third, 30, "Estimated Delivery", h.delivery_date ? dd(h.delivery_date) : (Number(h.delivery_fee) ? "To be agreed" : "Collection"));
+  kc(w, L + 2 * third, w.y, third, 22, "Sales Person", `${b.trading_name.split(" ")[0]} team`);
+  w.y += 7;
+  // customer
+  kSec(w, "Customer Details");
+  const half = FW / 2, addr = (cu.address || "").split(/\n|,\s*/).filter(Boolean);
+  const delAddr = Number(h.delivery_fee) ? (h.delivery_address ? h.delivery_address.split(/\n|,\s*/) : [cu.name, ...addr, cu.postcode]) : ["Collection from", b.trading_name, ...(b.invoice_address || b.viewing_location || "").replace(/\s*\(.*\)$/, "").split(/,\s*|\n/)];
+  kBox(w, L, w.y, half, 24, "Supply To / Invoice To", [cu.name, ...addr, cu.postcode]);
+  kBox(w, L + half, w.y, half, 24, Number(h.delivery_fee) ? "Deliver To" : "Collection", delAddr);
+  w.y += 24;
+  kc(w, L, w.y, half, 22, "Mobile No.", cu.phone); kc(w, L + half, w.y, half, 22, "Order No.", ctx.invoiceNo); w.y += 5;
+  kc(w, L, w.y, half, 22, "Email", cu.email); kc(w, L + half, w.y, half, 22, "Sale Type", { on_premises: "In person, on premises", distance: "Distance (remote)", off_premises: "Off premises" }[h.sale_type] || ""); w.y += 7;
+  // vehicle
+  kSec(w, "Vehicle Details");
+  const vrows = [
+    [["Make", c.make], ["Model", [c.model, c.variant].filter(Boolean).join(" ")], ["Reg No.", c.reg, { b: 1 }]],
+    [["Colour", c.colour], ["Body", c.body], ["Year", c.year]],
+    [["Stock No.", c.stock_id], ["Chassis No.", c.vin], ["MOT Expiry", c.mot_expiry ? dd(c.mot_expiry) : ""]],
+    [["Mileage", `${Number(h.mileage || c.mileage || 0).toLocaleString("en-GB")} miles`], ["Fuel / Gearbox", [c.fuel, c.gearbox].filter(Boolean).join(" / ")], ["New / Used", "Used"]],
+    [["Warranty Status", h.warranty === "included" ? "Warranty included" : "No warranty"], ["Keys", String(h.keys ?? c.keys ?? "")], ["Service History", c.service_history || ""]],
+  ];
+  for (const r of vrows) { r.forEach(([k, v, o], i) => kc(w, L + i * third, w.y, third, 22, k, v, 5, o || {})); w.y += 5; }
+  // faults
   const faults = String(h.faults_disclosed || c.known_faults || "None known.").split(/\r?\n/).map(x => x.replace(/^[-•*\d.)\s]+/, "").trim()).filter(Boolean);
-  doc.setFontSize(8.2); const colW = FW / 2 - 4;
-  const fl = faults.map((f, i) => doc.splitTextToSize(`${i + 1}.  ${f}`, colW));
-  const rowsN = Math.ceil(fl.length / 2); let fh = 6;
-  for (let r = 0; r < rowsN; r++) fh += Math.max(fl[2 * r]?.length || 1, fl[2 * r + 1]?.length || 1) * 3.6 + 0.8;
-  fh = Math.max(fh + 1.5, 12);
-  doc.setDrawColor(...RULE); doc.rect(L, w.y, FW, fh);
-  doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text("Known faults and condition notes (disclosed to the customer before sale)", L + 1.6, w.y + 2.9);
-  doc.setFont(w.f, "normal"); doc.setFontSize(8.2); doc.setTextColor(...INK);
-  let fy = w.y + 7;
-  for (let r = 0; r < rowsN; r++) { const a = fl[2 * r] || [], bb = fl[2 * r + 1] || []; doc.text(a, L + 1.6, fy); doc.text(bb, L + FW / 2 + 1.6, fy); fy += Math.max(a.length, bb.length, 1) * 3.6 + 0.8; }
-  w.y += fh;
-  w.y += 5; secHead(w, "Part exchange");
-  const px = Number(h.px_value) || 0;
-  grid(w, [[.2, "Registration", h.px_reg || "None"], [.35, "Make / model", h.px_model || ""], [.15, "Mileage", h.px_mileage || ""], [.15, "Settlement", ""], [.15, "Allowance", px ? money(px) : ""]], 8.6);
-  w.y += 5; secHead(w, "Price and payment");
-  const price = Number(h.price) || 0, del = Number(h.delivery_fee) || 0, total = price + del;
-  const rows = [["Cash price of vehicle", money(price)], ["Delivery charge", money(del)], ["Admin / preparation fees", money(0)], ["Part exchange allowance", px ? `(${money(px)})` : money(0)], ["Total price", money(total - px), "tot"]];
-  for (const p of ctx.payments) rows.push([`Less ${PAYNAME[p.type] || p.type} paid (${PAYMETHOD[p.method] || p.method || ""}, ${d8(p.date)})`, p.type === "refund" ? money(p.amount) : `(${money(p.amount)})`]);
-  rows.push([ctx.balance > 0 ? "Balance due before handover" : "Paid in full", money(Math.max(0, ctx.balance)), "bal"]);
-  const pw = FW * 0.54, px0 = L + FW - pw, rh = 5.6; let ry = w.y;
-  for (const [k, v, t] of rows) {
-    if (t === "bal") { doc.setFillColor(...PALE); doc.rect(px0, ry, pw, rh, "F"); }
-    doc.setDrawColor(...RULE); doc.rect(px0, ry, pw, rh);
-    if (t === "tot") { doc.setDrawColor(...NAVY); doc.setLineWidth(0.35); doc.line(px0, ry, px0 + pw, ry); doc.setLineWidth(0.18); }
-    doc.setFont(w.f, t ? "bold" : "normal"); doc.setFontSize(t ? 8.6 : 8); doc.setTextColor(...INK);
-    doc.text(doc.splitTextToSize(k, pw - 30)[0], px0 + 2, ry + 3.9); doc.text(v, px0 + pw - 2, ry + 3.9, { align: "right" }); ry += rh;
+  doc.setFontSize(7); const fl = doc.splitTextToSize(faults.map((f, i) => `${i + 1}. ${f}`).join("   "), FW - 2.4);
+  const fh = 5 + fl.length * 3.1 + 1.2;
+  doc.setDrawColor(...BOX); doc.rect(L, w.y, FW, fh);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.4); doc.setTextColor(...DK); doc.text("Known Faults / Condition (disclosed before sale)", L + 1.2, w.y + 3);
+  doc.setFont(w.f, "normal"); doc.setFontSize(7); doc.text(fl, L + 1.2, w.y + 6.4, { lineHeightFactor: 1.25 }); w.y += fh + 2;
+  // summary ledger
+  kSec(w, "Summary");
+  const price = Number(h.price) || 0, del = Number(h.delivery_fee) || 0, px = Number(h.px_value) || 0, total = price + del - px;
+  const lines = [
+    ["Total Vehicle Price", "", money(price)],
+    ["Adjustments", "Customer saving", money(0)],
+    ["Vehicle Sub Total", "", money(price), 1],
+    ["Other", "Admin fee", money(0)],
+    ["", "Delivery charge", money(del)],
+    ["", "Road fund licence", "Customer to tax"],
+    ["Part Exchange", h.px_reg ? `${h.px_reg} ${h.px_model || ""}`.trim() : "None", px ? `(${money(px)})` : money(0)],
+    ["Sub Total", "", money(price + del - px), 1],
+    ["VAT", b.vat_treatment === "not_registered" ? "Seller not VAT registered, no VAT charged" : b.vat_treatment === "margin_scheme" ? "Second-hand margin scheme, VAT not shown" : "", money(0)],
+    ["Invoice Total", "", money(total), 1],
+  ];
+  for (const p of ctx.payments) lines.push([p.type === "refund" ? "Refund" : "Less Deposit", `${PAYMETHOD[p.method] || p.method || ""} ${dd(p.date)}${p.reference ? " · ref " + p.reference : ""}`, p.type === "refund" ? money(p.amount) : `(${money(p.amount)})`]);
+  lines.push(["Balance Due", "Payable in cleared funds before handover", money(Math.max(0, ctx.balance)), 2]);
+  const rh = 4.3, c2 = L + 46, c3 = L + FW - 1.5;
+  doc.setDrawColor(...BOX); doc.rect(L, w.y, FW, lines.length * rh + 1.5); let y = w.y + 1;
+  for (const [a1, a2, a3, bold] of lines) {
+    if (bold === 2) { doc.setFillColor(...GREYF); doc.rect(L, y - 0.3, FW, rh + 0.6, "F"); }
+    doc.setFont(w.f, bold ? "bold" : "normal"); doc.setFontSize(bold ? 7.6 : 7.1); doc.setTextColor(...DK);
+    doc.text(a1, L + 2, y + 3); doc.setFont(w.f, "normal"); doc.text(a2, c2, y + 3); doc.setFont(w.f, bold ? "bold" : "normal"); doc.text(a3, c3, y + 3, { align: "right" });
+    doc.setDrawColor(215, 220, 226); doc.line(c2, y + rh, c3, y + rh); y += rh;
   }
-  const lw = FW - pw - 4, lh = ry - w.y;
-  doc.setDrawColor(...RULE); doc.rect(L, w.y, lw, lh);
-  doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text("Delivery and notes", L + 1.6, w.y + 2.9);
-  doc.setFont(w.f, "normal"); doc.setFontSize(7.8); doc.setTextColor(...INK);
-  const notes = [h.delivery_fee ? `Delivery date: ${h.delivery_date ? d8(h.delivery_date) : "to be agreed"}` : "Collection from Motorwise Hereford",
-    h.warranty === "included" ? "Warranty: included (see warranty terms)" : "Warranty: none",
-    `Goodwill look-over: ${b.aftercare_days || 14} days (terms, clause 16)`,
-    b.vat_treatment === "not_registered" ? "VAT: not applicable, seller not VAT registered" : b.vat_treatment === "margin_scheme" ? "VAT: second-hand margin scheme" : `VAT no. ${b.vat_number || ""}`,
-    "Balance to be paid in cleared funds before handover"];
-  doc.text(notes.map(n => doc.splitTextToSize(n, lw - 4)[0]), L + 1.8, w.y + 7.5, { lineHeightFactor: 1.55 });
-  w.y = ry + 5; secHead(w, "Customer declaration");
-  doc.setFont(w.f, "normal"); doc.setFontSize(7.6); doc.setTextColor(...INK);
-  const dec = doc.splitTextToSize("I agree to purchase the vehicle described above at the price shown, on the " + b.trading_name + " terms and conditions of sale overleaf, which I have read and accept. I confirm that the faults and condition notes above were disclosed to me before I agreed to buy, that I understand the vehicle is used and priced for its age, mileage and condition, and that the details on this form are correct. Ownership passes on payment of the balance in full. This does not affect my statutory rights.", FW);
-  doc.text(dec, L, w.y + 4, { lineHeightFactor: 1.35 }); w.y += 4 + dec.length * 3.6 + 2;
-  const sh = 17; const cols = [[.38, "Customer signature", "customer"], [.12, "Date", "cd"], [.38, `Signed for ${b.trading_name}`, "staff"], [.12, "Date", "sd"]];
-  let x = L; const sig = h.signatures || {};
-  for (const [frac, lab, key] of cols) {
-    const cw = FW * frac; doc.setDrawColor(...RULE); doc.rect(x, w.y, cw, sh);
-    doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text(lab, x + 1.6, w.y + 2.9);
-    const role = key === "customer" || key === "staff" ? key : null, s = sig[role || (key === "cd" ? "customer" : "staff")];
-    if (role && ctx.sigImages && ctx.sigImages[role]) sigImg(doc, ctx.sigImages[role], x + 2, w.y + 3.8, cw - 4, 12);
-    if (!role && s) { doc.setFont(w.f, "normal"); doc.setFontSize(8); doc.setTextColor(...INK); doc.text(d8(s.at), x + 1.6, w.y + sh - 2.5); }
+  w.y = y + 3;
+  // notes
+  const notes = [h.notes, Number(h.delivery_fee) ? `Delivery ${h.delivery_date ? "on " + d8(h.delivery_date) : "date to be agreed"}.` : "", `${b.aftercare_days || 14}-day goodwill look-over (terms, clause 16).`].filter(Boolean).join("  ");
+  kBox(w, L, w.y, FW, 10, "Notes", doc.splitTextToSize(notes, FW - 3).slice(0, 1)); w.y += 12;
+  // acceptance
+  kSec(w, "Acceptance of Terms");
+  doc.setFont(w.f, "normal"); doc.setFontSize(6.8); doc.setTextColor(...DK);
+  const acc = doc.splitTextToSize(`I/We acknowledge receipt of a copy of this order and accept the terms and conditions of sale overleaf, which form part of this contract. I confirm the known faults above were disclosed to me before I agreed to buy, and that the vehicle is used and priced for its age, mileage and condition. Ownership passes when the balance is paid in full. My statutory rights are not affected. We will use your details to deal with this sale and your aftercare; tick below if you are happy for us to contact you about other cars and offers.`, FW - 3);
+  doc.text(acc, L + 1.5, w.y + 3.4, { lineHeightFactor: 1.25 }); w.y += acc.length * 2.95 + 2.6;
+  // contact preferences
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.6); doc.text("Contact preferences", L + 1.5, w.y + 2.8);
+  const prefs = h.contact_prefs || {}; let px0 = L + 30;
+  for (const [k, lab] of [["post", "by Letter"], ["sms", "by SMS"], ["email", "by Email"], ["phone", "by Phone"]]) {
+    doc.setFont(w.f, "normal"); doc.text(lab, px0, w.y + 2.8); doc.setDrawColor(...BOX); doc.rect(px0 + doc.getTextWidth(lab) + 1.2, w.y + 0.4, 2.8, 2.8);
+    if (prefs[k]) { doc.setDrawColor(...DK); doc.setLineWidth(0.35); const bx = px0 + doc.getTextWidth(lab) + 1.2; doc.line(bx + 0.5, w.y + 1.9, bx + 1.2, w.y + 2.7); doc.line(bx + 1.2, w.y + 2.7, bx + 2.4, w.y + 0.9); doc.setLineWidth(0.15); }
+    px0 += 24;
+  }
+  w.y += 5.5;
+  // signatures
+  const sig = h.signatures || {}, cs = sig.customer, ss = sig.staff, sh = 22;
+  const cols = [[0.4, "Customer's Signature", "customer"], [0.15, "Date", "cd"], [0.45, "Sales Person's Signature", "staff"]];
+  let x = L;
+  for (const [fr, lab, key] of cols) {
+    const cw = FW * fr; doc.setDrawColor(...BOX); doc.setFillColor(...GREYF); doc.rect(x, w.y, cw, 4.2, "FD"); doc.rect(x, w.y + 4.2, cw, sh);
+    doc.setFont(w.f, "bold"); doc.setFontSize(6.4); doc.setTextColor(...DK); doc.text(lab, x + 1.2, w.y + 3);
+    if (key !== "cd" && ctx.sigImages && ctx.sigImages[key]) sigImg(doc, ctx.sigImages[key], x + 2, w.y + 5, cw - 4, sh - 2);
+    if (key === "cd" && cs) { doc.setFont(w.f, "normal"); doc.setFontSize(7.2); doc.text(dd(cs.at), x + 1.2, w.y + 4.2 + sh / 2 + 1); }
     x += cw;
   }
-  w.y += sh + 3.5;
-  doc.setFont(w.f, "normal"); doc.setFontSize(6.8); doc.setTextColor(...LAB);
-  const cs = sig.customer;
-  doc.text(`Customer name (print): ${cu.name || ""}${cs ? `   ·   Signed ${dt(cs.at)}${cs.method === "esign" ? ` by e-signature (IP ${cs.ip || "recorded"})` : cs.device ? ` on ${cs.device}` : ""}   ·   ${cs.doc_version || ""}` : ""}`, L, w.y);
+  w.y += 4.2 + sh;
+  kc(w, L, w.y, FW * 0.55, 30, "Customer Print Name", cu.name); kc(w, L + FW * 0.55, w.y, FW * 0.45, 30, "Signed for", `${b.trading_name}${ss ? ` · ${dd(ss.at)}` : ""}`); w.y += 8.5;
+  doc.setFont(w.f, "normal"); doc.setFontSize(6.2); doc.setTextColor(...LAB);
+  const stamp = cs ? `Customer signed ${dt(cs.at)}${cs.method === "esign" ? ` by online e-signature (IP ${cs.ip || "recorded"})` : cs.device ? ` in person on ${cs.device}` : ""}. ${cs.doc_version || ""}` : "";
+  doc.text(doc.splitTextToSize(`This document contains the terms of a contract and includes the terms and conditions overleaf. Sign it only if you wish to be legally bound by them.${stamp ? "  " + stamp : ""}`, FW), L, w.y, { lineHeightFactor: 1.25 });
 };
 
 SECTIONS.tcs = (w, ctx) => {
   const { doc } = w; const b = ctx.biz;
-  letterhead(w, "Terms and Conditions of Sale", [["Order no.", ctx.invoiceNo], ["Vehicle", ctx.car.reg || ""]]);
+  kHead(w, "Terms and Conditions of Sale");
   const parts = [ctx.templates.tcs]; if (ctx.h.warranty === "included") parts.push(ctx.templates.warranty);
   const paras = parts.filter(Boolean).map(t => fill(t.body, b)).join("\n").split("\n").filter(Boolean);
   const gap = 4, cw = (FW - 2 * gap) / 3, top = w.y, bottom = 262, fs = 5.3, lh = fs * 0.3528 * 1.28;
@@ -345,7 +410,7 @@ SECTIONS.tcs = (w, ctx) => {
     const m = para.match(/^(\d+\.\s*[^.]+\.)\s*(.*)$/);
     const lines = doc.splitTextToSize(para, cw - 2.2);
     for (const [i, ln] of lines.entries()) {
-      if (y > bottom) { col++; y = top + 1; if (col > 2) { letterhead(w, "Terms and Conditions of Sale (continued)", [["Order no.", ctx.invoiceNo]]); doc.setFontSize(fs); doc.setTextColor(42, 52, 65); col = 0; } }
+      if (y > bottom) { col++; y = top + 1; if (col > 2) { kHead(w, "Terms and Conditions of Sale (continued)"); doc.setFontSize(fs); doc.setTextColor(42, 52, 65); col = 0; } }
       const x = L + col * (cw + gap);
       if (i === 0 && m && ln.startsWith(m[1])) { doc.setTextColor(...NAVY); put(m[1], true, x); const bw = doc.getTextWidth(m[1] + " "); doc.setTextColor(42, 52, 65); put(ln.slice(m[1].length).trimStart(), false, x + bw); }
       else put(ln, false, x);
