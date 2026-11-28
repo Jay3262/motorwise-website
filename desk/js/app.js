@@ -45,7 +45,7 @@ async function boot() {
   if (!S.live) await seedSample(S.store);
   S.user = await S.store.user();
   // Only changes made on the OTHER phone refresh the screen by themselves; never while someone is typing, signing or in a sheet.
-  S.store.onChange((t, remote) => { if (!remote) return; clearTimeout(boot.t); boot.t = setTimeout(() => { if (!document.querySelector(".sheet,canvas.sig") && !document.activeElement?.matches("input,textarea,select")) render(); }, 400); });
+  S.store.onChange((t, remote) => { if (!remote) return; attachEsigns().catch(() => { }); clearTimeout(boot.t); boot.t = setTimeout(() => { if (!document.querySelector(".sheet,canvas.sig") && !document.activeElement?.matches("input,textarea,select")) render(); }, 400); });
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => { });
   window.addEventListener("hashchange", render);
   document.addEventListener("desk-save", e => paintSave(e.detail));
@@ -65,6 +65,9 @@ async function loadSettings() {
   S.team = await S.store.team().catch(() => []);
   const tpls = await S.store.list("templates");
   for (const t of TEMPLATE_DEFAULTS) if (!tpls.some(x => x.key === t.key)) await S.store.insert("templates", { ...t, version: 1 });
+  // Upgrade the terms to the current wording (needs approving again in Admin > Wording).
+  const tNew = TEMPLATE_DEFAULTS.find(t => t.key === "tcs"), tOld = tpls.find(x => x.key === "tcs");
+  if (tOld && (tOld.tver || 1) < tNew.tver) await S.store.update("templates", tOld.id, { body: tNew.body, title: tNew.title, tver: tNew.tver, status: "draft", version: (tOld.version || 1) + 1 });
 }
 
 async function audit(action, detail = {}) { try { await S.store.insert("audit", { action, by: S.user.email, at: nowIso(), ...detail }); } catch { } }
@@ -89,8 +92,9 @@ async function render() {
   if (!S.user) return renderLogin();
   await loadSettings();
   if (S.mode === "github" && !S.synced) { S.synced = true; syncFromSite(); }
+  attachEsigns().catch(() => { });
   const [r, a, b] = location.hash.replace(/^#/, "").split("/");
-  const routes = { today, cars, car, "car-new": carNew, leads, lead, "lead-new": leadNew, "viewing-new": viewingNew, viewing, money: moneyScreen, handover, admin, "money-car": moneyCar };
+  const routes = { today, cars, car, "car-new": carNew, leads, lead, "lead-new": leadNew, "viewing-new": viewingNew, viewing, money: moneyScreen, handover, admin, "money-car": moneyCar, customers, customer: customerPage };
   const fn = routes[r] || today;
   try {
     const view = await fn(a, b);
@@ -99,8 +103,8 @@ async function render() {
 }
 
 function shell(view, route) {
-  const tab = { today: "today", cars: "cars", car: "cars", "car-new": "cars", "money-car": "money", leads: "leads", lead: "leads", "lead-new": "leads", "viewing-new": "leads", viewing: "leads", money: "money", handover: "today", admin: "admin" }[route] || "today";
-  const tabs = [["today", "Today", I.today], ["cars", "Stock", I.cars], ["leads", "Leads", I.leads], ["money", "Accounts", I.money], ["admin", "Admin", I.admin]];
+  const tab = { today: "today", cars: "cars", car: "cars", "car-new": "cars", "money-car": "money", leads: "customers", lead: "customers", "lead-new": "customers", "viewing-new": "customers", viewing: "customers", customers: "customers", customer: "customers", money: "money", handover: "customers", admin: "admin" }[route] || "today";
+  const tabs = [["today", "Today", I.today], ["cars", "Stock", I.cars], ["customers", "Customers", I.leads], ["money", "Accounts", I.money], ["admin", "Admin", I.admin]];
   APP.dataset.route = route;
   APP.innerHTML = `
   <aside class="brand"><img src="icons/icon-192.png" alt="" width="36" height="36"><div><b>Motorwise</b><span>Desk</span></div></aside>
@@ -155,61 +159,166 @@ async function renderLogin() {
   $$("[data-email]").forEach(b => b.onclick = async () => { S.user = await S.store.signIn(b.dataset.email); S.user.name = b.dataset.name; location.hash = "#today"; render(); });
 }
 
-/* ---------------- Today ---------------- */
+/* ---------------- Today: the numbers, then what needs doing ---------------- */
+const daysBetween = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 864e5));
 async function today() {
-  const [leads, viewings, carsL, photos, hos, txs] = await Promise.all(["leads", "viewings", "cars", "photos", "handovers", "transactions"].map(t => S.store.list(t)));
-  const eod = endOfToday(); const now = new Date();
+  const [carsL, photos, hos, txs, custs, esL] = await Promise.all(["cars", "photos", "handovers", "transactions", "customers", "esign"].map(t => S.store.list(t)));
+  const real = carsL.filter(c => !c.sample); const now = new Date(); const tdy = todayISO();
+  const custName = id => custs.find(x => x.id === id)?.name || "";
   const items = [];
-  for (const l of leads) {
-    if (l.stage === "new" && !l.assigned_to) items.push({ pri: 0, href: `#lead/${l.id}`, t: "New enquiry: nobody has picked it up", s: `${esc(l.name || "Unknown")} · ${esc(l.source || "")}`, tag: ["new", "New"] });
-    else if (l.follow_up && new Date(l.follow_up) <= eod && !["sold", "closed"].includes(l.stage) && (isMe(l.assigned_to) || !l.assigned_to)) items.push({ pri: new Date(l.follow_up) < now ? 1 : 2, href: `#lead/${l.id}`, t: `Follow up ${esc(l.name || "")}`, s: `${new Date(l.follow_up) < now ? "Overdue · " : ""}${fmtDT(l.follow_up)}`, tag: new Date(l.follow_up) < now ? ["failed", "Overdue"] : null });
-  }
-  for (const v of viewings) {
-    if (!v.at || v.outcome) continue; const at = new Date(v.at);
-    if (at <= eod && at >= new Date(now.getTime() - 3 * 3600e3)) { const l = leads.find(x => x.id === v.lead_id) || {}; const c = carsL.find(x => x.id === v.car_id); items.push({ pri: 1.5, href: `#viewing/${v.id}`, t: `Viewing ${fmtTime(v.at)}: ${esc(l.name || "")}`, s: `${esc(carTitle(c))} · ${esc(nameOf(v.assigned_to))}`, tag: ["reserved", "Viewing"] }); }
-  }
+  for (const e of esL.filter(e => e.status === "pending")) items.push({ pri: Date.parse(e.expires_at) < Date.now() ? 1 : 2.6, href: `#handover/${e.handover_id}/preview`, t: `Waiting for ${esc(e.customer_name)} to sign`, s: `${esc(e.order_no)} · ${esc(e.reg)} · sent ${fmtDT(e.created_at)}`, tag: Date.parse(e.expires_at) < Date.now() ? ["failed", "Link expired"] : ["prepared", "To sign"] });
   for (const h of hos) {
-    if (h.status === "failed") items.push({ pri: 0.5, href: `#handover/${h.id}`, t: "Handover pack did not send", s: "Open to send again", tag: ["failed", "Failed"] });
-    else if (h.status === "draft") { const c = carsL.find(x => x.id === h.car_id); items.push({ pri: 3, href: `#handover/${h.id}`, t: "Finish handover", s: esc(c ? `${carTitle(c)} ${c.reg}` : "Car not chosen yet"), tag: ["prepared", "In progress"] }); }
-    else if (h.status === "prepared") items.push({ pri: 2.5, href: `#handover/${h.id}`, t: "Handover pack prepared, not sent", s: "Open to send", tag: ["prepared", "Prepared"] });
+    const c = carsL.find(x => x.id === h.car_id);
+    if (h.status === "failed") items.push({ pri: 0.5, href: `#handover/${h.id}`, t: "Paperwork did not send", s: "Open to send again", tag: ["failed", "Failed"] });
+    else if (h.status === "draft" && h.signatures?.customer?.method === "esign") items.push({ pri: 0.8, href: `#handover/${h.id}/preview`, t: `${esc(custName(h.customer_id) || "Customer")} has signed online`, s: `Issue and send the pack · ${esc(c ? c.reg : "")}`, tag: ["sent", "Signed"] });
+    else if (h.status === "draft") items.push({ pri: 3, href: `#handover/${h.id}`, t: "Finish paperwork", s: esc(c ? `${carTitle(c)} ${c.reg}` : "Car not chosen yet") + (custName(h.customer_id) ? ` · ${esc(custName(h.customer_id))}` : ""), tag: ["prepared", "Draft"] });
+    else if (h.status === "prepared") items.push({ pri: 2.5, href: `#handover/${h.id}`, t: "Pack ready, not sent", s: `${esc(custName(h.customer_id))} · ${esc(c?.reg || "")}`, tag: ["prepared", "Ready"] });
+    if (h.delivery_date && h.delivery_date >= tdy && daysBetween(tdy, h.delivery_date) <= 7 && h.status !== "corrected") items.push({ pri: 1.8, href: `#handover/${h.id}`, t: `Delivery ${fmtDay(h.delivery_date)}`, s: `${esc(custName(h.customer_id))} · ${esc(c ? `${c.reg} ${carTitle(c)}` : "")}`, tag: ["reserved", "Delivery"] });
   }
-  for (const c of carsL.filter(c => c.status === "preparing")) {
+  for (const c of real.filter(c => c.status === "preparing")) {
     const have = new Set(photos.filter(p => p.car_id === c.id).map(p => p.slot)); const missing = SLOTS.filter(s => s[0] !== "damage" && !have.has(s[0]));
-    if (missing.length) items.push({ pri: 4, href: `#car/${c.id}`, t: `Photos needed: ${esc(c.reg)}`, s: missing.map(m => m[1]).join(", "), tag: ["preparing", "Preparing"] });
+    if (missing.length) items.push({ pri: 4, href: `#car/${c.id}`, t: `Photos needed: ${esc(c.reg)}`, s: missing.map(m => m[1]).join(", "), tag: ["preparing", "Photos"] });
   }
-  for (const c of carsL.filter(c => c.status === "sold")) { const f = carFigures(c, txs, S.settings); if (f.owed > 0) items.push({ pri: 3.5, href: `#money-car/${c.id}`, t: `${money(f.owed)} still owed`, s: `${esc(c.reg)} · ${esc(carTitle(c))}`, tag: ["new", "Owed"] }); }
-  for (const c of carsL.filter(c => c.sor && c.status === "sold")) { const ff = carFigures(c, txs, S.settings); if (ff.ownerOwed > 0) items.push({ pri: 2.2, href: `#car/${c.id}`, t: `Pay ${esc(c.sor_owner || "the owner")} ${money(ff.ownerOwed)}`, s: `Sale or return: ${esc(c.stock_id || c.reg)} has sold`, tag: ["failed", "Owed"] }); }
-  for (const c of carsL.filter(c => c.sor && !OUT.includes(c.status) && c.sor_until && c.sor_until <= todayISO())) items.push({ pri: 2.4, href: `#car/${c.id}`, t: `Sale or return agreement has ended: ${esc(c.stock_id || c.reg)}`, s: `Agree a new date with ${esc(c.sor_owner || "the owner")} or return the car`, tag: ["prepared", "SOR"] });
-  for (const c of carsL.filter(c => !OUT.includes(c.status) && !c.sample)) {
+  for (const c of real.filter(c => c.status === "sold")) { const f = carFigures(c, txs, S.settings); if (f.owed > 0) items.push({ pri: 3.5, href: `#money-car/${c.id}`, t: `${money(f.owed)} balance due`, s: `${esc(custName(c.customer_id))} · ${esc(c.reg)}`, tag: ["new", "Owed"] }); }
+  for (const c of real.filter(c => c.sor && c.status === "sold")) { const ff = carFigures(c, txs, S.settings); if (ff.ownerOwed > 0) items.push({ pri: 2.2, href: `#car/${c.id}`, t: `Pay ${esc(c.sor_owner || "the owner")} ${money(ff.ownerOwed)}`, s: `Sale or return: ${esc(c.stock_id || c.reg)} has sold`, tag: ["failed", "Owed"] }); }
+  for (const c of real.filter(c => c.sor && !OUT.includes(c.status) && c.sor_until && c.sor_until <= tdy)) items.push({ pri: 2.4, href: `#car/${c.id}`, t: `Sale or return agreement ended: ${esc(c.stock_id || c.reg)}`, s: `Agree a new date with ${esc(c.sor_owner || "the owner")} or return the car`, tag: ["prepared", "SOR"] });
+  for (const c of real.filter(c => !OUT.includes(c.status))) {
     if (!c.sor && !txs.some(t => t.car_id === c.id && t.type === "purchase")) items.push({ pri: 3.8, href: `#car/${c.id}`, t: `Add what you paid: ${esc(c.stock_id || c.reg)}`, s: esc(carTitle(c)), tag: ["preparing", "Accounts"] });
-    if (S.mode === "github" && c.published && c.web_dirty) items.push({ pri: 2.8, href: `#car/${c.id}`, t: `Website listing out of date: ${esc(c.stock_id || c.reg)}`, s: "You've changed details since publishing. Open and tap Update website listing.", tag: ["prepared", "Website"] });
+    if (S.mode === "github" && c.published && c.web_dirty) items.push({ pri: 2.8, href: `#car/${c.id}`, t: `Website listing out of date: ${esc(c.stock_id || c.reg)}`, s: "Open it and tap Update website listing", tag: ["prepared", "Website"] });
     if (S.mode === "github" && !c.published && c.status === "available") items.push({ pri: 2.9, href: `#car/${c.id}`, t: `Not on the website yet: ${esc(c.stock_id || c.reg)}`, s: "Open it and tap Publish to website", tag: ["new", "Website"] });
   }
   items.sort((a, b) => a.pri - b.pri);
-  const mk = new Date().toISOString().slice(0, 7);
-  const soldMonth = carsL.filter(c => c.status === "sold" && !c.sample && (c.sold_date || "").startsWith(mk));
-  const profitMonth = soldMonth.reduce((t, c) => t + (carFigures(c, txs, S.settings).profit || 0), 0);
-  const inStock = carsL.filter(c => !OUT.includes(c.status) && !c.sample).length;
-  const hello = new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening";
+  // the numbers
+  const mk = tdy.slice(0, 7), lastMk = new Date(now.getFullYear(), now.getMonth() - 1, 15).toISOString().slice(0, 7);
+  const stock = real.filter(c => !OUT.includes(c.status));
+  const figs = new Map(real.map(c => [c.id, carFigures(c, txs, S.settings)]));
+  const sold = real.filter(c => c.status === "sold");
+  const inMonth = m => sold.filter(c => (c.sold_date || "").startsWith(m));
+  const tot = (list, f) => list.reduce((t, c) => t + (f(c) || 0), 0);
+  const soldM = inMonth(mk), soldL = inMonth(lastMk);
+  const revM = tot(soldM, c => figs.get(c.id).salePrice + (Number(c.delivery_fee) || 0)), profM = tot(soldM, c => figs.get(c.id).profit), profL = tot(soldL, c => figs.get(c.id).profit);
+  const stockVal = tot(stock, c => Number(c.asking_price)), tied = tot(stock, c => figs.get(c.id).cashTied);
+  const ages = stock.map(c => daysBetween(c.purchase_date || c.created_at || tdy, tdy));
+  const avgAge = ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
+  const recentSold = sold.filter(c => c.sold_date && daysBetween(c.sold_date, tdy) <= 180 && (c.purchase_date || c.created_at));
+  const avgSell = recentSold.length ? Math.round(recentSold.reduce((t, c) => t + daysBetween(c.purchase_date || c.created_at, c.sold_date), 0) / recentSold.length) : null;
+  const owed = tot(sold, c => figs.get(c.id).owed);
+  const deposits = tot(real.filter(c => c.status === "reserved"), c => figs.get(c.id).received);
+  const toSign = esL.filter(e => e.status === "pending").length;
+  const kpi = (href, k, v, sub) => `<a class="kpi" href="${href}"><span class="k">${k}</span><span class="v">${v}</span><span class="muted">${sub}</span></a>`;
+  const delta = profL ? `${profM >= profL ? "+" : "−"}${money(Math.abs(profM - profL))} vs last month` : "this month";
+  const recent = [...sold].sort((a, b) => (b.sold_date || "").localeCompare(a.sold_date || "")).slice(0, 6);
+  const oldest = [...stock].sort((a, b) => (a.purchase_date || a.created_at || "").localeCompare(b.purchase_date || b.created_at || "")).slice(0, 6);
+  const docState = c => { const h = hos.filter(x => x.car_id === c.id && x.status !== "corrected").pop(); const e = esL.find(x => x.car_id === c.id && x.status === "pending"); return e ? `<span class="tag prepared">To sign</span>` : h ? `<span class="tag ${h.status === "sent" ? "sent" : "prepared"}">${{ sent: "Sent", prepared: "Ready", draft: "Draft", failed: "Failed" }[h.status] || h.status}</span>` : `<span class="muted">None</span>`; };
+  const hello = now.getHours() < 12 ? "Morning" : now.getHours() < 18 ? "Afternoon" : "Evening";
   return {
     title: "Today",
     html: `
     <div class="row between"><h2>${hello}, ${esc(S.user.name)}</h2><span class="muted">${fmtDay(nowIso())}</span></div>
-    <div class="kpis">
-      <a class="kpi" href="#cars"><span class="k">In stock</span><span class="v">${inStock}</span><span class="muted">cars</span></a>
-      <a class="kpi" href="#money"><span class="k">Sold this month</span><span class="v">${soldMonth.length}</span><span class="muted">${money(profitMonth)} profit</span></a>
+    <div class="kpis k8">
+      ${kpi("#cars", "In stock", stock.length, `${money(stockVal)} at asking`)}
+      ${kpi("#money", "Cash in stock", money(tied), "what the stock cost you")}
+      ${kpi("#money", "Sold this month", soldM.length, `${money(revM)} taken`)}
+      ${kpi("#money", "Profit this month", money(profM), delta)}
+      ${kpi("#cars", "Days in stock", avgAge, "average, current stock")}
+      ${kpi("#money", "Days to sell", avgSell ?? "–", "average, last 6 months")}
+      ${kpi("#money", "Balances due", money(owed), `${money(deposits)} deposits held`)}
+      ${kpi("#customers", "Awaiting signature", toSign, toSign === 1 ? "document pack" : "document packs")}
     </div>
     <div class="cols today"><div class="col">
     <section class="panel tight" aria-label="Needs doing">
-      <div style="padding:14px 16px 6px"><h2>Needs doing</h2></div>
-      <div class="list">${items.length ? items.map(i => `<a href="${i.href}"><div class="grow"><div class="t">${i.t}</div><div class="s">${i.s}</div></div>${i.tag ? `<span class="tag ${i.tag[0]}">${i.tag[1]}</span>` : ""}<span class="chev">›</span></a>`).join("") : `<div class="empty">Nothing due. New enquiries, follow-ups and viewings will show here.</div>`}</div>
+      <div style="padding:14px 16px 6px"><h2>Needs doing <span class="muted">${items.length || ""}</span></h2></div>
+      <div class="list">${items.length ? items.map(i => `<a href="${i.href}"><div class="grow"><div class="t">${i.t}</div><div class="s">${i.s}</div></div>${i.tag ? `<span class="tag ${i.tag[0]}">${i.tag[1]}</span>` : ""}<span class="chev">›</span></a>`).join("") : `<div class="empty">Nothing due.</div>`}</div>
+    </section>
+    <section class="panel"><div class="row between"><h2>Recent sales</h2><a class="small" href="#money">Accounts</a></div>
+      ${recent.length ? `<table class="t"><thead><tr><th>Date</th><th>Car</th><th>Customer</th><th class="r">Price</th><th class="r">Profit</th><th>Docs</th></tr></thead><tbody>${recent.map(c => { const f = figs.get(c.id); return `<tr><td>${esc(fmtShort(c.sold_date))}</td><td><a href="#car/${c.id}">${esc(c.reg)}</a></td><td>${c.customer_id ? `<a href="#customer/${c.customer_id}">${esc(custName(c.customer_id))}</a>` : ""}</td><td class="r num">${money(f.salePrice)}</td><td class="r num">${money(f.profit)}</td><td>${docState(c)}</td></tr>`; }).join("")}</tbody></table>` : `<p class="muted">No sales yet.</p>`}
     </section></div><div class="col">
     <nav class="quick" aria-label="Quick actions">
       <a href="#car-new">${I.addcar}Add car</a>
-      <a href="#lead-new">${I.addlead}Add lead</a>
-      <a href="#viewing-new">${I.viewing}Book viewing</a>
-      <a href="#handover/new">${I.handover}Start handover</a>
-    </nav></div></div>`,
+      <a href="#handover/new">${I.handover}Start a sale</a>
+      <a href="#customers">${I.addlead}Customers</a>
+      <a href="#money">${I.money}Accounts</a>
+    </nav>
+    <section class="panel"><div class="row between"><h2>Longest in stock</h2><a class="small" href="#cars">All stock</a></div>
+      ${oldest.length ? `<table class="t"><thead><tr><th>Stock</th><th>Car</th><th class="r">Days</th><th class="r">Asking</th></tr></thead><tbody>${oldest.map(c => `<tr><td><a href="#car/${c.id}">${esc(c.stock_id || c.reg)}</a></td><td>${esc(carTitle(c))}</td><td class="r num">${daysBetween(c.purchase_date || c.created_at || tdy, tdy)}</td><td class="r num">${money(c.asking_price)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">No cars in stock.</p>`}
+    </section></div></div>`,
+  };
+}
+const fmtShort = d => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+
+/* ---------------- Customers: one list, their cars and their documents ---------------- */
+async function custData() {
+  const [custs, hos, carsL, esL, issues, txs] = await Promise.all(["customers", "handovers", "cars", "esign", "issues", "transactions"].map(t => S.store.list(t)));
+  return { custs, hos, carsL, esL, issues, txs };
+}
+function docStatus(cid, d) {
+  const e = d.esL.filter(x => x.customer_id === cid && x.status === "pending")[0]; if (e) return ["prepared", "Awaiting signature"];
+  const h = d.hos.filter(x => x.customer_id === cid && x.status !== "corrected").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
+  if (!h) return null;
+  if (h.status === "sent") return ["sent", "Docs sent"]; if (h.status === "prepared") return ["prepared", "Docs ready"]; if (h.status === "failed") return ["failed", "Send failed"];
+  return h.signatures?.customer ? ["sent", "Signed, not issued"] : ["new", "Paperwork started"];
+}
+async function customers() {
+  const d = await custData();
+  const rows = d.custs.map(c => { const cars = d.carsL.filter(x => x.customer_id === c.id || d.hos.some(h => h.customer_id === c.id && h.car_id === x.id)); const owed = cars.reduce((t, x) => t + (x.status === "sold" && x.customer_id === c.id ? carFigures(x, d.txs, S.settings).owed : 0), 0); const last = d.hos.filter(h => h.customer_id === c.id).map(h => h.updated_at || h.created_at || "").sort().pop() || c.created_at || ""; return { c, cars, owed, last, st: docStatus(c.id, d) }; }).sort((a, b) => b.last.localeCompare(a.last));
+  const awaiting = rows.filter(r => r.st && r.st[1] === "Awaiting signature").length, owedT = rows.reduce((t, r) => t + r.owed, 0);
+  return {
+    title: "Customers",
+    html: `<div class="kpis"><div class="kpi"><span class="k">Customers</span><span class="v">${rows.length}</span><span class="muted">on record</span></div><div class="kpi"><span class="k">Awaiting signature</span><span class="v">${awaiting}</span><span class="muted">packs out</span></div><div class="kpi"><span class="k">Balances due</span><span class="v">${money(owedT)}</span><span class="muted">from customers</span></div><a class="kpi" href="#handover/new"><span class="k">New sale</span><span class="v">+</span><span class="muted">start paperwork</span></a></div>
+    <section class="panel tight"><div class="row between" style="padding:12px 16px"><input class="i" id="cq" type="search" placeholder="Search name, phone, reg or postcode" style="max-width:420px"><a class="btn primary" href="#customer/new">Add customer</a></div>
+    ${rows.length ? `<table class="t ct"><thead><tr><th>Name</th><th>Phone</th><th>Car</th><th>Documents</th><th class="r">Balance</th></tr></thead><tbody>${rows.map(r => `<tr data-q="${esc([r.c.name, r.c.phone, r.c.email, r.c.postcode, ...r.cars.map(x => x.reg)].join(" ").toLowerCase())}" onclick="location.hash='#customer/${r.c.id}'"><td><a href="#customer/${r.c.id}"><b>${esc(r.c.name || "No name")}</b></a><div class="muted">${esc(r.c.postcode || "")}</div></td><td>${esc(r.c.phone || "")}</td><td>${r.cars.map(x => `<span class="plate sm">${esc(x.reg)}</span>`).join(" ")}</td><td>${r.st ? `<span class="tag ${r.st[0]}">${r.st[1]}</span>` : `<span class="muted">None</span>`}</td><td class="r num">${r.owed ? money(r.owed) : "–"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">No customers yet. They're added when you start a sale, or tap Add customer.</div>`}
+    </section>`,
+    mount() { const q = $("#cq"); if (q) q.oninput = () => { const v = q.value.trim().toLowerCase(); $$("tr[data-q]").forEach(tr => tr.hidden = v && !tr.dataset.q.includes(v)); }; },
+  };
+}
+async function customerPage(id) {
+  if (id === "new") return {
+    title: "Add customer", back: "#customers",
+    html: `<form class="panel" id="f"><label class="f">Full name<input class="i" name="name" required></label><div class="btns"><label class="f">Phone<input class="i" name="phone" type="tel"></label><label class="f">Email<input class="i" name="email" type="email"></label></div><label class="f">Address<textarea class="i" name="address" style="min-height:72px"></textarea></label><label class="f">Postcode<input class="i" name="postcode" autocapitalize="characters"></label><button class="btn primary block">Save customer</button></form>`,
+    mount() { $("#f").onsubmit = async e => { e.preventDefault(); const dd = formData(e.target); dd.postcode = (dd.postcode || "").toUpperCase(); const c = await S.store.insert("customers", { ...dd, added_by: S.user.email }); location.hash = `#customer/${c.id}`; }; },
+  };
+  const d = await custData(); const c = d.custs.find(x => x.id === id);
+  if (!c) return { title: "Not found", back: "#customers", html: `<div class="empty">Customer not found.</div>` };
+  const hos = d.hos.filter(h => h.customer_id === id).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const tel = (c.phone || "").replace(/\s/g, "");
+  const block = h => {
+    const car = d.carsL.find(x => x.id === h.car_id); const iss = d.issues.filter(i => i.handover_id === h.id).sort((a, b) => (b.issued_at || "").localeCompare(a.issued_at || ""));
+    const e = d.esL.filter(x => x.handover_id === h.id && x.status !== "cancelled").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
+    const f = car && car.status === "sold" ? carFigures(car, d.txs, S.settings) : null;
+    const st = { draft: "Paperwork in progress", prepared: "Pack ready, not sent", sent: "Pack sent", failed: "Sending failed", corrected: "Corrected (credit note)" }[h.status] || h.status;
+    return `<section class="panel"><div class="row between"><h2>${car ? `<span class="plate">${esc(car.reg)}</span> ${esc(carTitle(car))}` : "Car not chosen"}</h2><span class="tag ${h.status === "draft" ? "prepared" : h.status}">${esc(st)}</span></div>
+      <table class="t"><tbody>
+        <tr><td>Price</td><td class="r num">${money2(h.price)}${Number(h.delivery_fee) ? ` + ${money2(h.delivery_fee)} delivery` : ""}</td></tr>
+        ${f ? `<tr><td>Balance due</td><td class="r num">${f.owed ? `<b>${money2(f.owed)}</b>` : "Paid in full"}</td></tr>` : ""}
+        ${h.delivery_date ? `<tr><td>Delivery</td><td class="r">${fmtDay(h.delivery_date)}</td></tr>` : ""}
+        <tr><td>Customer signature</td><td class="r">${h.signatures?.customer ? `Signed ${fmtDT(h.signatures.customer.at)}${h.signatures.customer.method === "esign" ? " online" : " in person"}` : e?.status === "pending" ? `Link sent ${fmtDT(e.created_at)}, not signed yet` : "Not signed"}</td></tr>
+      </tbody></table>
+      ${iss.length ? `<div class="list" style="margin:8px -16px 0">${iss[0].files.map((fl, k) => `<button data-file="${iss[0].id}:${k}"><div class="grow"><div class="t">${esc(fl.kind === "combined" ? "Full pack (PDF)" : (DOCS.find(x => x.key === fl.kind)?.name || fl.kind))}</div><div class="s">${esc(iss[0].number)} · issued ${fmtDT(iss[0].issued_at)}</div></div><span class="chev">›</span></button>`).join("")}</div>` : ""}
+      <div class="btns" style="margin-top:12px"><a class="btn ${h.status === "draft" ? "primary" : ""}" href="#handover/${h.id}${h.status === "draft" ? "/preview" : ""}">${h.status === "draft" ? "Continue paperwork" : "Open documents"}</a>${e?.status === "pending" ? `<button class="btn" data-copy="${e.id}">Copy signing link</button>` : ""}${tel && e?.status === "pending" ? `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(esignMsg(e, c))}">Resend on WhatsApp</a>` : ""}</div>
+    </section>`;
+  };
+  return {
+    title: c.name || "Customer", back: "#customers",
+    html: `<div class="cols"><div class="col">
+      <section class="panel"><h2>${esc(c.name)}</h2><p class="small">${esc((c.address || "").replace(/\n/g, ", "))}${c.postcode ? `, ${esc(c.postcode)}` : ""}</p>
+        <div class="btns">${tel ? `<a class="btn" href="tel:${esc(tel)}">Call</a><a class="btn" target="_blank" rel="noopener" href="https://wa.me/${waNumber(c.phone)}">WhatsApp</a>` : ""}${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">Email</a>` : ""}</div>
+        <button class="btn primary block" id="startsale" style="margin-top:10px">Start new paperwork</button></section>
+      ${hos.map(block).join("") || `<div class="empty">No paperwork yet.</div>`}
+    </div><div class="col">
+      <form class="panel" id="f"><h2>Details</h2>
+        <label class="f">Full name<input class="i" name="name" value="${esc(c.name)}" required></label>
+        <div class="btns"><label class="f">Phone<input class="i" name="phone" type="tel" value="${esc(c.phone)}"></label><label class="f">Email<input class="i" name="email" type="email" value="${esc(c.email)}"></label></div>
+        <label class="f">Address<textarea class="i" name="address" style="min-height:72px">${esc(c.address)}</textarea></label>
+        <label class="f">Postcode<input class="i" name="postcode" value="${esc(c.postcode)}" autocapitalize="characters"></label>
+        <label class="f">Notes<textarea class="i" name="notes" style="min-height:72px">${esc(c.notes)}</textarea></label>
+        <button class="btn block">Save changes</button></form>
+    </div></div>`,
+    mount() {
+      $("#f").onsubmit = async ev => { ev.preventDefault(); const dd = formData(ev.target); dd.postcode = (dd.postcode || "").toUpperCase(); await S.store.update("customers", id, dd); toast("Saved"); render(); };
+      $("#startsale").onclick = () => { S.nextCustomer = id; location.hash = "#handover/new"; };
+      $$("[data-copy]").forEach(b => b.onclick = async () => { const e = d.esL.find(x => x.id === b.dataset.copy); try { await navigator.clipboard.writeText(esignLink(e)); toast("Link copied"); } catch { prompt("Copy this link", esignLink(e)); } });
+      $$("[data-file]").forEach(b => b.onclick = async () => { const [iid, k] = b.dataset.file.split(":"); const fl = d.issues.find(i => i.id === iid).files[k]; const blob = await S.store.fileBlob(fl.path); if (!blob) return toast("File not found", true); await saveOrShare(new File([blob], fl.name, { type: "application/pdf" }), fl.name); });
+    },
   };
 }
 
@@ -323,7 +432,6 @@ async function car(id) {
     </section>
 
     </div><div class="col">
-    ${buyersPanel(c, leadsAll, viewingsAll)}
     ${websitePanel(c, photos)}
     <section class="panel">
       <div class="row between"><h2>Costs and money</h2><a class="small" href="#money-car/${c.id}">Full breakdown</a></div>
@@ -833,7 +941,8 @@ async function handover(id, step) {
     if (S.creating) return { title: "Handover", html: "" };
     S.creating = true;
     const leadId = location.hash.split("/")[3] || null;
-    const h = await S.store.insert("handovers", { status: "draft", version: 1, car_id: step || null, lead_id: leadId, sale_type: "on_premises", warranty: "none", checklist: {}, signatures: {}, started_by: S.user.email });
+    const cust0 = S.nextCustomer || null; S.nextCustomer = null;
+    const h = await S.store.insert("handovers", { status: "draft", version: 1, car_id: step || null, customer_id: cust0, lead_id: leadId, sale_type: "on_premises", warranty: "none", checklist: {}, signatures: {}, started_by: S.user.email });
     setTimeout(() => S.creating = false, 1000);
     location.replace(`#handover/${h.id}/${step ? "customer" : "car"}`); return { title: "Handover", html: "" };
   }
@@ -885,12 +994,14 @@ const HSTEP = {
     const [c, txs] = await Promise.all([S.store.get("cars", h.car_id), S.store.list("transactions")]);
     const pays = txs.filter(t => t.car_id === h.car_id && [...IN_TYPES, "refund"].includes(t.type));
     const paid = pays.reduce((s, t) => s + (t.type === "refund" ? -1 : 1) * Number(t.amount), 0);
-    const bal = (Number(h.price) || 0) - (Number(h.px_value) || 0) - paid;
+    const bal = (Number(h.price) || 0) + (Number(h.delivery_fee) || 0) - (Number(h.px_value) || 0) - paid;
     const warrantyOk = (await S.store.list("templates")).some(t => t.key === "warranty" && t.status === "approved");
     return {
       html: `<form class="panel" id="f">
         <label class="f">Agreed price (£)<input class="i" name="price" type="number" inputmode="decimal" step="0.01" required value="${esc(h.price)}"></label>
         <div class="btns"><label class="f">Mileage at handover<input class="i" name="mileage" type="number" value="${esc(h.mileage)}"></label><label class="f">Keys<input class="i" name="keys" type="number" value="${esc(h.keys)}"></label></div>
+        <div class="btns"><label class="f">Delivery charge (£) <span class="hint">blank if collecting</span><input class="i" name="delivery_fee" type="number" inputmode="decimal" step="0.01" value="${esc(h.delivery_fee)}"></label><label class="f">Delivery date<input class="i" name="delivery_date" type="date" value="${esc(h.delivery_date)}"></label></div>
+        <label class="f">Delivery address <span class="hint">blank = customer's address</span><input class="i" name="delivery_address" value="${esc(h.delivery_address)}"></label>
         <label class="f">How was the sale agreed?<select class="i" name="sale_type">
           <option value="on_premises" ${h.sale_type === "on_premises" ? "selected" : ""}>In person at Ramsden Road</option>
           <option value="distance" ${h.sale_type === "distance" ? "selected" : ""}>Remotely (phone, WhatsApp, online) without visiting</option>
@@ -901,7 +1012,7 @@ const HSTEP = {
       </form>
       <section class="panel"><h2>Payments</h2>
         ${pays.length ? pays.map(p => `<div class="row between"><span>${fmtDate(p.date)} · ${esc(p.type.replace("_", "-"))} · ${esc(p.method)}</span><span class="num">${p.type === "refund" ? "−" : ""}${money2(p.amount)}</span></div>`).join("") : `<p class="muted">No payments yet.</p>`}
-        <div class="calc"><div class="l"><span>Price</span><span class="num">${money2(h.price)}</span></div>${h.px_value ? `<div class="l"><span>− Part exchange</span><span class="num">${money2(h.px_value)}</span></div>` : ""}<div class="l"><span>− Paid</span><span class="num">${money2(paid)}</span></div><div class="l tot"><span>Balance</span><span class="num">${money2(bal)}</span></div></div>
+        <div class="calc"><div class="l"><span>Price</span><span class="num">${money2(h.price)}</span></div>${Number(h.delivery_fee) ? `<div class="l"><span>+ Delivery</span><span class="num">${money2(h.delivery_fee)}</span></div>` : ""}${h.px_value ? `<div class="l"><span>− Part exchange</span><span class="num">${money2(h.px_value)}</span></div>` : ""}<div class="l"><span>− Paid</span><span class="num">${money2(paid)}</span></div><div class="l tot"><span>Balance</span><span class="num">${money2(bal)}</span></div></div>
         <div class="btns"><button class="btn" data-pay="balance">Balance paid</button><button class="btn" data-pay="part_payment">Part-payment</button></div>
       </section>
       <button class="btn primary block" id="go">Next: checklist</button>`,
@@ -956,6 +1067,7 @@ const HSTEP = {
       <section class="panel"><div class="row between"><h2>Handover pack</h2><a class="small" href="${url}" target="_blank" rel="noopener">Open full screen</a></div>
       <iframe class="pack-frame" src="${url}" title="Handover pack preview"></iframe>
       <p class="muted">Contains: ${DOCS.map(d => d.name).join(", ")}. Sent as one combined PDF plus each document separately.</p></section>
+      ${await esignPanel(h, ctx, blockers)}
       <section class="panel"><h2>Send</h2>
         <p class="small">Sending gives this pack an invoice number, saves an exact copy, marks the car Sold and records the sale. It can't be undone, only corrected with a credit note.</p>
         <label class="f">Send by<select class="i" id="via">${canEmail ? `<option value="email">Email to ${esc(email)}</option>` : ""}<option value="share">iPhone share sheet (WhatsApp, Mail, Messages, AirDrop)</option></select>${!canEmail ? `<span class="hint">${S.live ? (email ? "Email sending isn't set up yet, see Admin." : "No customer email.") : "Sample mode: the share sheet opens, nothing goes to a real customer unless you choose them."}</span>` : ""}</label>
@@ -964,19 +1076,70 @@ const HSTEP = {
       </section>`,
       mount() {
         $$("[data-approve]").forEach(b => b.onclick = async () => { await approveTemplate(b.dataset.approve); render(); });
+        mountEsign(h);
         const send = $("#send"); send.onclick = async () => { if (send.disabled) return; send.disabled = true; send.textContent = "Issuing…"; try { await issuePack(h.id, $("#via").value); } catch (e) { console.error(e); toast(e.message || "Could not issue the pack", true); send.disabled = false; send.textContent = "Issue and send pack"; } };
       },
     };
   },
 };
 
+// ---------- Remote e-signature ----------
+const esignLink = e => `${location.origin}/sign/?r=${e.id}&t=${e.token}`;
+const waNumber = p => { const d = String(p || "").replace(/\D/g, ""); return d.startsWith("0") ? "44" + d.slice(1) : d; };
+const esignMsg = (e, cu) => `Hi ${(cu?.name || "").replace(/^(Mr|Mrs|Ms|Miss|Dr)\.?\s+/i, "").split(" ")[0] || "there"}, here are your documents for the ${e.car_title} (${e.reg}) from ${S.settings.trading_name}. Please read them and sign here: ${esignLink(e)}  Any questions, call us on ${S.settings.phone || ""}.`;
+async function esignFor(hid) { return (await S.store.list("esign")).filter(e => e.handover_id === hid && e.status !== "cancelled").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0] || null; }
+async function esignPanel(h, ctx, blockers) {
+  if (h.signatures?.customer) return "";
+  const e = await esignFor(h.id);
+  const shareBtns = e => `<div class="btns">${ctx.customer.phone ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${waNumber(ctx.customer.phone)}?text=${encodeURIComponent(esignMsg(e, ctx.customer))}">WhatsApp</a>` : ""}${ctx.customer.email ? `<a class="btn" href="mailto:${esc(ctx.customer.email)}?subject=${encodeURIComponent(`Your documents to sign: ${e.order_no}`)}&body=${encodeURIComponent(esignMsg(e, ctx.customer))}">Email</a>` : ""}<button class="btn" id="es-copy">Copy link</button></div>`;
+  if (e && e.status === "pending") return `<section class="panel"><div class="row between"><h2>Signing online</h2><span class="tag prepared">Waiting</span></div><p class="small">Sent ${fmtDT(e.created_at)}. Link works until ${fmtDT(e.expires_at)}. When ${esc(ctx.customer.name || "the customer")} signs, their signature drops into this pack automatically.</p>${shareBtns(e)}<div class="btns"><button class="btn" id="es-check">Check now</button><button class="btn danger" id="es-cancel">Cancel link</button></div></section>`;
+  const noLive = S.mode !== "github";
+  const stop = blockers.length ? "Fix the red items above first." : noLive ? "Online signing works when you're signed in live." : "";
+  return `<section class="panel"><h2>Customer not here? Send it to sign online</h2><p class="small">They get a link to read the order form and terms on their phone, then sign with their finger. We record their name, signature, time, IP address and device, and the exact PDF they saw.</p>
+    <button class="btn primary block" id="es-new" ${stop ? "disabled" : ""}>Send for e-signature</button>${stop ? `<p class="muted">${stop}</p>` : ""}</section>`;
+}
+function mountEsign(h) {
+  const nb = $("#es-new"); if (nb) nb.onclick = async () => { nb.disabled = true; nb.textContent = "Preparing…"; try { await createEsign(h.id); render(); } catch (e) { console.error(e); toast(e.message || "Couldn't create the link", true); nb.disabled = false; nb.textContent = "Send for e-signature"; } };
+  const cp = $("#es-copy"); if (cp) cp.onclick = async () => { const e = await esignFor(h.id); try { await navigator.clipboard.writeText(esignLink(e)); toast("Link copied"); } catch { prompt("Copy this link", esignLink(e)); } };
+  const ck = $("#es-check"); if (ck) ck.onclick = async () => { await S.store.refresh?.(); const n = await attachEsigns(); if (!n) toast("Not signed yet"); render(); };
+  const cc = $("#es-cancel"); if (cc) cc.onclick = async () => { if (!confirm("Cancel this signing link? It will stop working straight away.")) return; const e = await esignFor(h.id); await S.store.update("esign", e.id, { status: "cancelled", cancelled_by: S.user.email }); await audit("esign_cancelled", { handover_id: h.id, esign_id: e.id }); render(); };
+}
+async function createEsign(hid) {
+  let h = await S.store.get("handovers", hid);
+  const invoiceNo = h.invoice_number || await S.store.nextInvoiceNumber();
+  if (!h.invoice_number) { await S.store.update("handovers", hid, { invoice_number: invoiceNo }); h = await S.store.get("handovers", hid); }
+  const ctx = await packContext(h, { invoiceNo, issuedAt: nowIso() });
+  if (ctx.draft) throw new Error("Approve the terms wording first (Admin > Wording).");
+  const pdf = await buildPdf(ctx, ["order", "tcs"]);
+  const bytes = crypto.getRandomValues(new Uint8Array(24)); const token = [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
+  const pdf_path = `esign/${token.slice(0, 10)}-${invoiceNo}.pdf`;
+  await S.store.putFile(pdf_path, pdf);
+  const del = Number(h.delivery_fee) || 0;
+  const e = await S.store.insert("esign", { token, handover_id: hid, car_id: h.car_id, customer_id: h.customer_id, status: "pending", order_no: invoiceNo, customer_name: ctx.customer.name || "", car_title: carTitle(ctx.car), reg: ctx.car.reg, total: (Number(h.price) || 0) + del - (Number(h.px_value) || 0), balance: ctx.balance, delivery: del ? { fee: del, date: h.delivery_date || null } : null, pdf_path, pdf_sha256: await sha256(pdf), doc_version: `${invoiceNo} · v${h.version} · terms v${ctx.templates.tcs?.version || "?"}`, expires_at: new Date(Date.now() + 14 * 864e5).toISOString(), created_by: S.user.email });
+  await audit("esign_sent", { handover_id: hid, esign_id: e.id, pdf_sha256: e.pdf_sha256 });
+  if (S.store.flush) await S.store.flush();
+  return e;
+}
+// Pulls online signatures into their handovers. Safe to run any time.
+async function attachEsigns() {
+  const list = (await S.store.list("esign")).filter(e => e.status === "signed" && !e.attached);
+  let n = 0;
+  for (const e of list) {
+    const h = await S.store.get("handovers", e.handover_id); if (!h) continue;
+    if (!h.signatures?.customer) await S.store.update("handovers", h.id, { signatures: { ...(h.signatures || {}), customer: { name: e.signed_name, at: e.signed_at, path: e.sig_path, doc_version: e.doc_version, method: "esign", ip: e.ip, device: "online e-signature", user_agent: e.user_agent } } });
+    await S.store.update("esign", e.id, { attached: true }); await audit("esign_signed", { handover_id: h.id, esign_id: e.id, ip: e.ip }); n++;
+    toast(`${e.signed_name} signed ${e.order_no} online`);
+  }
+  return n;
+}
+
 async function packContext(h, { preview, invoiceNo, issuedAt, version } = {}) {
   const [car, customer, txs, tpls] = await Promise.all([S.store.get("cars", h.car_id), S.store.get("customers", h.customer_id), S.store.list("transactions"), S.store.list("templates")]);
   const templates = Object.fromEntries(tpls.map(t => [t.key, t]));
   const payments = txs.filter(t => t.car_id === h.car_id && [...IN_TYPES, "refund"].includes(t.type)).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const paid = payments.reduce((s, t) => s + (t.type === "refund" ? -1 : 1) * Number(t.amount), 0);
-  const balance = Math.round(((Number(h.price) || 0) - (Number(h.px_value) || 0) - paid) * 100) / 100;
-  const used = ["tcs", "next_steps", ...(h.sale_type !== "on_premises" ? ["distance_rights"] : []), ...(h.warranty === "included" ? ["warranty"] : [])];
+  const balance = Math.round(((Number(h.price) || 0) + (Number(h.delivery_fee) || 0) - (Number(h.px_value) || 0) - paid) * 100) / 100;
+  const used = ["tcs", ...(h.warranty === "included" ? ["warranty"] : [])];
   const draft = used.some(k => !templates[k] || templates[k].status !== "approved");
   const sigImages = {}; for (const r of ["customer", "staff"]) { const s = h.signatures?.[r]; if (s?.path) { const b = await S.store.fileBlob(s.path); if (b) sigImages[r] = await blobToDataURL(b); } }
   const no = invoiceNo || "Not issued yet";
@@ -996,7 +1159,7 @@ function packFlags(ctx) {
   if (ctx.balance > 0) f.push({ block: false, text: `A balance of <b>${money2(ctx.balance)}</b> is still owed. It will show on the invoice and in Money.` });
   if (ctx.balance < 0) f.push({ block: true, text: `Payments are ${money2(-ctx.balance)} more than the price. Check the price and payments.` });
   const missing = CHECKLIST.filter(it => !ctx.h.checklist?.[it.key]); if (missing.length) f.push({ block: false, text: `${missing.length} checklist item${missing.length > 1 ? "s" : ""} not ticked. They'll show as "No" in the pack.` });
-  if (ctx.h.sale_type !== "on_premises") f.push({ block: false, text: "Remote or off-site sale: the buyer may have a 14-day right to cancel. Make sure the cancellation wording and model form are approved by your adviser." });
+  if (ctx.h.sale_type !== "on_premises") f.push({ block: false, text: "Remote sale: the buyer has a 14-day right to cancel once the car is delivered. This is covered in the terms (clause 28)." });
   if (b.vat_treatment !== "not_registered" && !b.vat_number && b.vat_treatment === "standard") f.push({ block: true, text: "VAT is set to standard rate but there's no VAT number.", fix: `<a class="btn" href="#admin/business">Fix in Admin</a>` });
   return f;
 }
@@ -1028,8 +1191,9 @@ async function issuePack(hid, via) {
     for (const d of DOCS) { const b = await buildPdf(ctx, [d.key]); const n = `${invoiceNo}-${reg}-${d.key.replace("_", "-")}.pdf`; files.push({ name: n, path: `${base}/${n}`, hash: await sha256(b), kind: d.key }); await S.store.putFile(`${base}/${n}`, b); }
     const issue = await S.store.insert("issues", { kind: "invoice", number: invoiceNo, handover_id: hid, car_id: h.car_id, customer_id: h.customer_id, price: Number(h.price), version: h.version, issued_by: S.user.email, issued_at: issuedAt, files, templates: Object.fromEntries(ctx.used.map(k => [k, ctx.templates[k].version])), signatures: h.signatures, delivery_status: "prepared", recipient: ctx.customer.email || "" });
     // Record the sale
-    await S.store.update("cars", h.car_id, { status: "sold", sold_price: Number(h.price), sold_date: issuedAt.slice(0, 10), px_value: Number(h.px_value) || 0, customer_id: h.customer_id, invoice_number: invoiceNo });
+    await S.store.update("cars", h.car_id, { status: "sold", sold_price: Number(h.price), delivery_fee: Number(h.delivery_fee) || 0, sold_date: issuedAt.slice(0, 10), px_value: Number(h.px_value) || 0, customer_id: h.customer_id, invoice_number: invoiceNo });
     if (h.lead_id) await S.store.update("leads", h.lead_id, { stage: "sold" }).catch(() => { });
+    if (S.mode === "github" && ctx.car.published) syncWebsite(h.car_id).then(() => toast("Website shows it as sold")).catch(err => toast("Website not updated: " + err.message, true));
     if (Number(h.px_value) && h.px_reg) { const px = await S.store.insert("cars", { reg: h.px_reg, make: (h.px_desc || "").split(" ").slice(1, 2).join(" "), model: (h.px_desc || "").split(" ").slice(2).join(" "), variant: h.px_desc, status: "preparing", purchase_date: issuedAt.slice(0, 10), keys: 1, known_faults: "", added_by: S.user.email, from_px_of: invoiceNo }); await S.store.insert("transactions", { car_id: px.id, type: "purchase", amount: Number(h.px_value), date: issuedAt.slice(0, 10), method: "part_exchange", note: `Part exchange against ${invoiceNo}`, by: S.user.email }); }
     await S.store.update("handovers", hid, { status: "prepared", issue_id: issue.id, issuing: false, issued_at: issuedAt });
     await audit("pack_issued", { handover_id: hid, number: invoiceNo, hash: files[0].hash });

@@ -32,3 +32,10 @@
 
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable
+
+/sign/*
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src blob:; base-uri 'none'; object-src 'none'; frame-ancestors 'none'

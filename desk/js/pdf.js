@@ -211,96 +211,155 @@ function headerBand(w, title, sub) {
 }
 const L = 14, FW = A4W - 28;
 
+// ---------- Dealer-style order form + small-print terms (letterhead, ruled grid) ----------
+const RULE = [201, 209, 217], LAB = [91, 102, 117], PALE = [238, 243, 246];
+let LOGO = null;
+async function loadLogo() { if (LOGO !== null) return LOGO; try { const r = await fetch("icons/icon-192.png"); const b = await r.blob(); LOGO = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); } catch { LOGO = false; } return LOGO; }
+function letterhead(w, title, rows) {
+  const { doc, ctx } = w; const b = ctx.biz;
+  if (w.started) doc.addPage(); w.started = true; w.title = title;
+  if (LOGO) try { doc.addImage(LOGO, "PNG", L, 13, 14, 14); } catch { }
+  doc.setTextColor(...NAVY); doc.setFont(w.f, "bold"); doc.setFontSize(15); doc.text(b.trading_name || "", L + 17, 18.5);
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.6); doc.setTextColor(...LAB);
+  const addr = (b.invoice_address || b.viewing_location || "").replace(/\s*\(.*\)$/, "").replace(/\n/g, ", ");
+  doc.text([addr, [b.phone, b.website].filter(Boolean).join("  ·  "), b.email || ""], L + 17, 22.8, { lineHeightFactor: 1.3 });
+  doc.setTextColor(...NAVY); doc.setFont(w.f, "bold"); doc.setFontSize(14); doc.text(title, A4W - L, 17.5, { align: "right" });
+  const tw = 72, tx = A4W - L - tw, rh = 4.9; let ty = 20.5;
+  doc.setLineWidth(0.18);
+  for (const [k, v] of rows) {
+    doc.setDrawColor(...RULE); doc.rect(tx, ty, tw, rh); doc.line(tx + 26, ty, tx + 26, ty + rh);
+    doc.setFont(w.f, "bold"); doc.setFontSize(6.6); doc.setTextColor(...LAB); doc.text(k, tx + 1.8, ty + 3.3);
+    doc.setFont(w.f, "normal"); doc.setFontSize(8); doc.setTextColor(...INK); doc.text(doc.splitTextToSize(String(v ?? ""), tw - 29)[0] || "", tx + 28, ty + 3.4);
+    ty += rh;
+  }
+  const ry = Math.max(ty, 36) + 3.5;
+  doc.setDrawColor(...NAVY); doc.setLineWidth(0.55); doc.line(L, ry, A4W - L, ry);
+  doc.setDrawColor(...TEAL); doc.setLineWidth(0.3); doc.line(L, ry + 0.9, A4W - L, ry + 0.9);
+  doc.setLineWidth(0.18);
+  doc.setDrawColor(...RULE); doc.line(L, 284, A4W - L, 284);
+  doc.setFont(w.f, "normal"); doc.setFontSize(6.8); doc.setTextColor(...LAB);
+  doc.text(`${b.trading_name}  ·  ${addr}  ·  ${b.phone || ""}  ·  ${b.email || ""}`, L, 288);
+  const legal = [b.legal_name ? `${b.trading_name} is a trading name of ${b.legal_name}.` : "", b.company_number ? `Company no. ${b.company_number}.` : "", b.vat_treatment === "not_registered" ? "Not VAT registered." : b.vat_number ? `VAT no. ${b.vat_number}.` : ""].filter(Boolean).join("  ");
+  if (legal) doc.text(legal, L, 291.5);
+  if (ctx.versionLabel) doc.text(ctx.versionLabel, A4W - L, 291.5, { align: "right" });
+  w.y = ry + 6;
+  if (ctx.draft) { doc.setFillColor(251, 233, 231); doc.rect(L, w.y - 3, FW, 6.5, "F"); doc.setTextColor(...RED); doc.setFont(w.f, "bold"); doc.setFontSize(8); doc.text("DRAFT: the terms wording has not been approved yet (Admin > Wording). Do not issue.", L + 2, w.y + 1.3); w.y += 6; }
+}
+function secHead(w, t) { const { doc } = w; doc.setFont(w.f, "bold"); doc.setFontSize(9); doc.setTextColor(...NAVY); doc.text(t, L, w.y + 3.2); doc.setDrawColor(...NAVY); doc.setLineWidth(0.3); doc.line(L, w.y + 4.6, L + FW, w.y + 4.6); doc.setLineWidth(0.18); w.y += 4.6; }
+function grid(w, cells, h = 9.2) {
+  const { doc } = w; let x = L;
+  for (const [frac, lab, val, opt = {}] of cells) {
+    const cw = FW * frac; doc.setDrawColor(...RULE); doc.rect(x, w.y, cw, h);
+    doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text(lab, x + 1.6, w.y + 2.9);
+    doc.setFont(w.f, opt.b ? "bold" : "normal"); let fs = opt.s || 8.8; doc.setFontSize(fs); doc.setTextColor(...INK);
+    const v = String(val ?? ""); while (fs > 6.5 && doc.getTextWidth(v) > cw - 3.2) { fs -= 0.3; doc.setFontSize(fs); }
+    doc.text(v, x + 1.6, w.y + h - 2.1); x += cw;
+  }
+  w.y += h;
+}
+const PAYNAME = { deposit: "deposit", part_payment: "part-payment", balance: "payment", refund: "refund" };
+const PAYMETHOD = { cash: "cash", bank: "bank transfer", card: "card", other: "other", part_exchange: "part exchange" };
+
+function sigImg(doc, img, x, y, w, h) { try { const p = doc.getImageProperties(img); const k = Math.min(w / p.width, h / p.height); const iw = p.width * k, ih = p.height * k; doc.addImage(img, "PNG", x, y + (h - ih), iw, ih); } catch { } }
 SECTIONS.order = (w, ctx) => {
   const { doc } = w; const { biz: b, car: c, customer: cu, h } = ctx;
-  headerBand(w, ctx.creditNote ? "Credit note" : "Vehicle order form", `${ctx.invoiceNo} · ${d8(ctx.issuedAt)}`);
-  let y = w.y;
-  // Seller / buyer
-  const half = (FW - 4) / 2;
-  box(w, L, y, half, 31, "Seller"); box(w, L + half + 4, y, half, 31, "Buyer");
-  doc.setFont(w.f, "bold"); doc.setFontSize(9.5); doc.setTextColor(...INK);
-  doc.text(doc.splitTextToSize(`${b.legal_name || "[owner's name]"} trading as ${b.trading_name}`, half - 6).slice(0, 2), L + 3, y + 10);
-  doc.setFont(w.f, "normal"); doc.setFontSize(8.5);
-  doc.text(doc.splitTextToSize([b.invoice_address || "[address]", b.phone].filter(Boolean).join("\n"), half - 6).slice(0, 4), L + 3, y + 19);
-  doc.setFont(w.f, "bold"); doc.setFontSize(9.5); doc.text(cu.name || "", L + half + 7, y + 10);
-  doc.setFont(w.f, "normal"); doc.setFontSize(8.5);
-  doc.text(doc.splitTextToSize([[cu.address, cu.postcode].filter(Boolean).join(", "), cu.phone, cu.email].filter(Boolean).join("\n"), half - 6).slice(0, 5), L + half + 7, y + 15);
-  y += 35;
-  // Vehicle
-  box(w, L, y, FW, 25, "Vehicle");
-  const col = FW / 4;
-  const vf = [["Registration", c.reg], ["Make and model", [c.make, c.model, c.variant].filter(Boolean).join(" ")], ["Year", c.year], ["Colour", c.colour],
-    ["Mileage at sale", Number(h.mileage || c.mileage || 0).toLocaleString("en-GB")], ["Fuel", c.fuel], ["MOT expires", c.mot_expiry ? d8(c.mot_expiry) : ""], ["Keys", h.keys ?? c.keys]];
-  vf.forEach(([k, v], i) => field(w, L + 3 + (i % 4) * col, y + 9.5 + Math.floor(i / 4) * 9.5, k, v, col - 5));
-  y += 29;
-  // Faults
-  doc.setFontSize(9.5); const fl = doc.splitTextToSize(h.faults_disclosed || c.known_faults || "None known.", FW - 6).slice(0, 9);
-  const fh = Math.max(17, 10 + fl.length * 4.4);
-  doc.setFillColor(255, 243, 214); doc.roundedRect(L, y, FW, fh, 1.5, 1.5, "F"); box(w, L, y, FW, fh, "Faults and condition points told to the buyer before sale");
-  doc.setFont(w.f, "normal"); doc.setFontSize(9.5); doc.setTextColor(...INK); doc.text(fl, L + 3, y + 10);
-  y += fh + 4;
-  // Price + checks
-  const pw = FW * 0.46, cw = FW - pw - 4, ph = 52;
-  box(w, L, y, pw, ph, "Price and payment"); box(w, L + pw + 4, y, cw, ph, "Handover checks");
-  const price = Number(h.price) || 0, px = Number(h.px_value) || 0;
-  const rows = [["Vehicle price", money(price)]];
-  if (px) rows.push([`Part exchange ${h.px_reg || ""}`.trim(), "− " + money(px)]);
-  for (const p of ctx.payments.slice(0, 4)) rows.push([`${{ deposit: "Deposit", part_payment: "Part-payment", balance: "Payment", refund: "Refund" }[p.type] || p.type} (${{ cash: "cash", bank: "bank", card: "card" }[p.method] || p.method || ""}) ${new Date(p.date + "T12:00").toLocaleDateString("en-GB")}`, (p.type === "refund" ? "+ " : "− ") + money(p.amount)]);
-  if (ctx.payments.length > 4) rows.push([`${ctx.payments.length - 4} more payments`, "− " + money(ctx.payments.slice(4).reduce((s, p) => s + (p.type === "refund" ? -1 : 1) * Number(p.amount), 0))]);
-  let ry = y + 10; doc.setFontSize(9);
-  for (const [k, v] of rows) { doc.setFont(w.f, "normal"); doc.setTextColor(...INK); doc.text(doc.splitTextToSize(k, pw - 32)[0], L + 3, ry); doc.text(v, L + pw - 3, ry, { align: "right" }); ry += 5; }
-  doc.setDrawColor(191, 203, 210); doc.line(L + 3, ry - 2.5, L + pw - 3, ry - 2.5);
-  doc.setFont(w.f, "bold"); doc.setFontSize(10.5); doc.text(ctx.balance > 0 ? "Balance due" : "Paid in full", L + 3, ry + 2.5); doc.text(money(Math.max(0, ctx.balance)), L + pw - 3, ry + 2.5, { align: "right" });
-  doc.setFont(w.f, "normal"); doc.setFontSize(7.5); doc.setTextColor(...GREY);
-  const vn = b.vat_treatment === "not_registered" ? "Not VAT registered. No VAT is charged. No extra fees added." : b.vat_treatment === "margin_scheme" ? "Second-hand margin scheme: VAT is not shown separately." : `Includes VAT at 20%: ${money(price / 6)}. VAT no. ${b.vat_number}`;
-  doc.text(doc.splitTextToSize(vn, pw - 6), L + 3, y + ph - 5.5);
-  let cy = y + 10; doc.setFontSize(8.5);
-  for (const it of ctx.checklistItems) {
-    const on = h.checklist && h.checklist[it.key];
-    doc.setDrawColor(...(on ? TEAL : GREY)); doc.setLineWidth(0.35); doc.rect(L + pw + 7, cy - 2.9, 3.3, 3.3, "S");
-    if (on) { doc.setDrawColor(...TEAL); doc.setLineWidth(0.6); doc.line(L + pw + 7.6, cy - 1.2, L + pw + 8.6, cy); doc.line(L + pw + 8.6, cy, L + pw + 10, cy - 2.4); }
-    doc.setFont(w.f, "normal"); doc.setTextColor(...INK); const t = doc.splitTextToSize(it.short || it.label, cw - 14); doc.text(t[0], L + pw + 12.5, cy); cy += 5.1;
+  letterhead(w, ctx.creditNote ? "Credit Note" : "Vehicle Order Form", [["Order no.", ctx.invoiceNo], ["Order date", d8(ctx.issuedAt)], ["Stock no.", c.stock_id || ""], ["Sale type", { on_premises: "Used · retail · in person", distance: "Used · retail · remote", off_premises: "Used · retail · off premises" }[h.sale_type] || "Used · retail"]]);
+  secHead(w, "Customer");
+  grid(w, [[.42, "Name", cu.name, { b: 1 }], [.24, "Mobile", cu.phone], [.34, "Email", cu.email]]);
+  grid(w, [[.42, "Address", (cu.address || "").replace(/\n/g, ", ")], [.24, "Postcode", cu.postcode], [.34, "Delivery address", h.delivery_fee ? (h.delivery_address || "As customer address") : "Collection from us"]]);
+  w.y += 5; secHead(w, "Vehicle");
+  grid(w, [[.2, "Registration", c.reg, { b: 1 }], [.2, "Make", c.make], [.3, "Model / derivative", [c.model, c.variant].filter(Boolean).join(" ")], [.15, "Year", c.year], [.15, "Colour", c.colour]]);
+  grid(w, [[.2, "Odometer reading", `${Number(h.mileage || c.mileage || 0).toLocaleString("en-GB")} miles`], [.2, "Transmission", c.gearbox], [.3, "Body", c.body || ""], [.15, "Fuel", c.fuel], [.15, "Keys", h.keys ?? c.keys ?? ""]]);
+  grid(w, [[.4, "VIN", c.vin], [.3, "MOT expiry", c.mot_expiry ? d8(c.mot_expiry) : ""], [.3, "Service history", c.service_history || ""]]);
+  const faults = String(h.faults_disclosed || c.known_faults || "None known.").split(/\r?\n/).map(x => x.replace(/^[-•*\d.)\s]+/, "").trim()).filter(Boolean);
+  doc.setFontSize(8.2); const colW = FW / 2 - 4;
+  const fl = faults.map((f, i) => doc.splitTextToSize(`${i + 1}.  ${f}`, colW));
+  const rowsN = Math.ceil(fl.length / 2); let fh = 6;
+  for (let r = 0; r < rowsN; r++) fh += Math.max(fl[2 * r]?.length || 1, fl[2 * r + 1]?.length || 1) * 3.6 + 0.8;
+  fh = Math.max(fh + 1.5, 12);
+  doc.setDrawColor(...RULE); doc.rect(L, w.y, FW, fh);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text("Known faults and condition notes (disclosed to the customer before sale)", L + 1.6, w.y + 2.9);
+  doc.setFont(w.f, "normal"); doc.setFontSize(8.2); doc.setTextColor(...INK);
+  let fy = w.y + 7;
+  for (let r = 0; r < rowsN; r++) { const a = fl[2 * r] || [], bb = fl[2 * r + 1] || []; doc.text(a, L + 1.6, fy); doc.text(bb, L + FW / 2 + 1.6, fy); fy += Math.max(a.length, bb.length, 1) * 3.6 + 0.8; }
+  w.y += fh;
+  w.y += 5; secHead(w, "Part exchange");
+  const px = Number(h.px_value) || 0;
+  grid(w, [[.2, "Registration", h.px_reg || "None"], [.35, "Make / model", h.px_model || ""], [.15, "Mileage", h.px_mileage || ""], [.15, "Settlement", ""], [.15, "Allowance", px ? money(px) : ""]], 8.6);
+  w.y += 5; secHead(w, "Price and payment");
+  const price = Number(h.price) || 0, del = Number(h.delivery_fee) || 0, total = price + del;
+  const rows = [["Cash price of vehicle", money(price)], ["Delivery charge", money(del)], ["Admin / preparation fees", money(0)], ["Part exchange allowance", px ? `(${money(px)})` : money(0)], ["Total price", money(total - px), "tot"]];
+  for (const p of ctx.payments) rows.push([`Less ${PAYNAME[p.type] || p.type} paid (${PAYMETHOD[p.method] || p.method || ""}, ${d8(p.date)})`, p.type === "refund" ? money(p.amount) : `(${money(p.amount)})`]);
+  rows.push([ctx.balance > 0 ? "Balance due before handover" : "Paid in full", money(Math.max(0, ctx.balance)), "bal"]);
+  const pw = FW * 0.54, px0 = L + FW - pw, rh = 5.6; let ry = w.y;
+  for (const [k, v, t] of rows) {
+    if (t === "bal") { doc.setFillColor(...PALE); doc.rect(px0, ry, pw, rh, "F"); }
+    doc.setDrawColor(...RULE); doc.rect(px0, ry, pw, rh);
+    if (t === "tot") { doc.setDrawColor(...NAVY); doc.setLineWidth(0.35); doc.line(px0, ry, px0 + pw, ry); doc.setLineWidth(0.18); }
+    doc.setFont(w.f, t ? "bold" : "normal"); doc.setFontSize(t ? 8.6 : 8); doc.setTextColor(...INK);
+    doc.text(doc.splitTextToSize(k, pw - 30)[0], px0 + 2, ry + 3.9); doc.text(v, px0 + pw - 2, ry + 3.9, { align: "right" }); ry += rh;
   }
-  doc.setLineWidth(0.3);
-  y += ph + 4;
-  // Declaration + signatures
-  doc.setFont(w.f, "normal"); doc.setFontSize(8.8); doc.setTextColor(...INK);
-  const dec = doc.splitTextToSize("Buyer's declaration: I agree to buy the vehicle above at this price and on the terms and conditions on page 2, which I have read. The faults and condition points above were explained to me before I agreed to buy. I have inspected the vehicle and received it with the keys stated. This does not affect my statutory rights.", FW);
-  doc.text(dec, L, y + 3); y += dec.length * 4 + 3;
-  sigBlock(w, L, y, half, "Buyer signature", h.signatures && h.signatures.customer, ctx.sigImages && ctx.sigImages.customer);
-  sigBlock(w, L + half + 4, y, half, `For ${b.trading_name}`, h.signatures && h.signatures.staff, ctx.sigImages && ctx.sigImages.staff);
-  y += 36;
-  // Next steps
-  const ns = ctx.templates.next_steps;
-  if (ns && y < 262) { doc.setFont(w.f, "bold"); doc.setFontSize(8.5); doc.setTextColor(...TEAL); doc.text("BEFORE YOU DRIVE AWAY", L, y + 2); doc.setFont(w.f, "normal"); doc.setTextColor(...INK); doc.setFontSize(8.5); doc.text(doc.splitTextToSize(fill(ns.body, b), FW).slice(0, 6), L, y + 6.5); }
+  const lw = FW - pw - 4, lh = ry - w.y;
+  doc.setDrawColor(...RULE); doc.rect(L, w.y, lw, lh);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text("Delivery and notes", L + 1.6, w.y + 2.9);
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.8); doc.setTextColor(...INK);
+  const notes = [h.delivery_fee ? `Delivery date: ${h.delivery_date ? d8(h.delivery_date) : "to be agreed"}` : "Collection from Motorwise Hereford",
+    h.warranty === "included" ? "Warranty: included (see warranty terms)" : "Warranty: none",
+    `Goodwill look-over: ${b.aftercare_days || 14} days (terms, clause 16)`,
+    b.vat_treatment === "not_registered" ? "VAT: not applicable, seller not VAT registered" : b.vat_treatment === "margin_scheme" ? "VAT: second-hand margin scheme" : `VAT no. ${b.vat_number || ""}`,
+    "Balance to be paid in cleared funds before handover"];
+  doc.text(notes.map(n => doc.splitTextToSize(n, lw - 4)[0]), L + 1.8, w.y + 7.5, { lineHeightFactor: 1.55 });
+  w.y = ry + 5; secHead(w, "Customer declaration");
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.6); doc.setTextColor(...INK);
+  const dec = doc.splitTextToSize("I agree to purchase the vehicle described above at the price shown, on the " + b.trading_name + " terms and conditions of sale overleaf, which I have read and accept. I confirm that the faults and condition notes above were disclosed to me before I agreed to buy, that I understand the vehicle is used and priced for its age, mileage and condition, and that the details on this form are correct. Ownership passes on payment of the balance in full. This does not affect my statutory rights.", FW);
+  doc.text(dec, L, w.y + 4, { lineHeightFactor: 1.35 }); w.y += 4 + dec.length * 3.6 + 2;
+  const sh = 17; const cols = [[.38, "Customer signature", "customer"], [.12, "Date", "cd"], [.38, `Signed for ${b.trading_name}`, "staff"], [.12, "Date", "sd"]];
+  let x = L; const sig = h.signatures || {};
+  for (const [frac, lab, key] of cols) {
+    const cw = FW * frac; doc.setDrawColor(...RULE); doc.rect(x, w.y, cw, sh);
+    doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text(lab, x + 1.6, w.y + 2.9);
+    const role = key === "customer" || key === "staff" ? key : null, s = sig[role || (key === "cd" ? "customer" : "staff")];
+    if (role && ctx.sigImages && ctx.sigImages[role]) sigImg(doc, ctx.sigImages[role], x + 2, w.y + 3.8, cw - 4, 12);
+    if (!role && s) { doc.setFont(w.f, "normal"); doc.setFontSize(8); doc.setTextColor(...INK); doc.text(d8(s.at), x + 1.6, w.y + sh - 2.5); }
+    x += cw;
+  }
+  w.y += sh + 3.5;
+  doc.setFont(w.f, "normal"); doc.setFontSize(6.8); doc.setTextColor(...LAB);
+  const cs = sig.customer;
+  doc.text(`Customer name (print): ${cu.name || ""}${cs ? `   ·   Signed ${dt(cs.at)}${cs.method === "esign" ? ` by e-signature (IP ${cs.ip || "recorded"})` : cs.device ? ` on ${cs.device}` : ""}   ·   ${cs.doc_version || ""}` : ""}`, L, w.y);
 };
 
 SECTIONS.tcs = (w, ctx) => {
   const { doc } = w; const b = ctx.biz;
-  headerBand(w, "Terms and conditions of sale", `${ctx.invoiceNo} · ${d8(ctx.issuedAt)}`);
-  const parts = [ctx.templates.tcs];
-  if (ctx.h.sale_type && ctx.h.sale_type !== "on_premises") parts.push(ctx.templates.distance_rights);
-  if (ctx.h.warranty === "included") parts.push(ctx.templates.warranty);
-  let size = 8.6; const text = parts.filter(Boolean).map(t => fill(t.body, b)).join("\n");
-  // shrink slightly so terms + signature fit on one page where possible
-  for (; size > 7.4; size -= 0.2) { doc.setFontSize(size); const n = text.split("\n").reduce((s, p) => s + doc.splitTextToSize(p || " ", FW).length, 0); if (w.y + n * size * 0.42 + text.split("\n").length * 1.1 < 238) break; }
-  doc.setFontSize(size); doc.setTextColor(...INK);
-  for (const para of text.split("\n")) {
-    const m = para.match(/^(\d+\.\s*[^.]+\.)(.*)$/);
-    const lines = doc.splitTextToSize(para || " ", FW);
+  letterhead(w, "Terms and Conditions of Sale", [["Order no.", ctx.invoiceNo], ["Vehicle", ctx.car.reg || ""]]);
+  const parts = [ctx.templates.tcs]; if (ctx.h.warranty === "included") parts.push(ctx.templates.warranty);
+  const paras = parts.filter(Boolean).map(t => fill(t.body, b)).join("\n").split("\n").filter(Boolean);
+  const gap = 4, cw = (FW - 2 * gap) / 3, top = w.y, bottom = 262, fs = 5.3, lh = fs * 0.3528 * 1.28;
+  let col = 0, y = top + 1;
+  const put = (ln, bold, x) => { doc.setFont(w.f, bold ? "bold" : "normal"); doc.text(ln, x, y); };
+  doc.setFontSize(5.6); doc.setFont(w.f, "bold"); doc.setTextColor(...NAVY);
+  const intro = doc.splitTextToSize("These terms form part of the vehicle order form overleaf. Please read them carefully. Your statutory rights are not affected.", cw);
+  doc.text(intro, L, y + 1.5); y += intro.length * lh + 2.5;
+  doc.setFontSize(fs); doc.setTextColor(42, 52, 65);
+  for (const para of paras) {
+    const m = para.match(/^(\d+\.\s*[^.]+\.)\s*(.*)$/);
+    const lines = doc.splitTextToSize(para, cw - 2.2);
     for (const [i, ln] of lines.entries()) {
-      if (w.y > 280) { headerBand(w, "Terms and conditions (continued)", ctx.invoiceNo); doc.setFontSize(size); }
-      if (i === 0 && m && ln.startsWith(m[1])) { doc.setFont(w.f, "bold"); doc.text(m[1], L, w.y); const bw = doc.getTextWidth(m[1] + " "); doc.setFont(w.f, "normal"); doc.text(ln.slice(m[1].length).trimStart(), L + bw, w.y); }
-      else { doc.setFont(w.f, "normal"); doc.text(ln, L, w.y); }
-      w.y += size * 0.42;
+      if (y > bottom) { col++; y = top + 1; if (col > 2) { letterhead(w, "Terms and Conditions of Sale (continued)", [["Order no.", ctx.invoiceNo]]); doc.setFontSize(fs); doc.setTextColor(42, 52, 65); col = 0; } }
+      const x = L + col * (cw + gap);
+      if (i === 0 && m && ln.startsWith(m[1])) { doc.setTextColor(...NAVY); put(m[1], true, x); const bw = doc.getTextWidth(m[1] + " "); doc.setTextColor(42, 52, 65); put(ln.slice(m[1].length).trimStart(), false, x + bw); }
+      else put(ln, false, x);
+      y += lh;
     }
-    w.y += 1.1;
+    y += 1.05;
   }
-  if (w.y > 248) headerBand(w, "Terms and conditions (signature)", ctx.invoiceNo);
-  w.y += 2; doc.setFont(w.f, "bold"); doc.setFontSize(9); doc.text("I have read, received and agree to these terms and conditions.", L, w.y + 2);
-  const half = (FW - 4) / 2;
-  sigBlock(w, L, w.y + 5, half, "Buyer signature", ctx.h.signatures && ctx.h.signatures.customer, ctx.sigImages && ctx.sigImages.customer);
-  sigBlock(w, L + half + 4, w.y + 5, half, `For ${b.trading_name}`, ctx.h.signatures && ctx.h.signatures.staff, ctx.sigImages && ctx.sigImages.staff);
+  doc.setDrawColor(...RULE); for (const k of [1, 2]) doc.line(L + k * (cw + gap) - gap / 2, top, L + k * (cw + gap) - gap / 2, bottom + 1);
+  const sy = 266, s = (ctx.h.signatures || {}).customer;
+  doc.rect(L, sy, FW, 14);
+  doc.setFont(w.f, "bold"); doc.setFontSize(6.2); doc.setTextColor(...LAB); doc.text("Customer signature", L + 1.6, sy + 2.9); doc.text("Date", L + 92, sy + 2.9);
+  if (ctx.sigImages && ctx.sigImages.customer) sigImg(doc, ctx.sigImages.customer, L + 2, sy + 3.4, 70, 10);
+  if (s) { doc.setFont(w.f, "normal"); doc.setFontSize(8); doc.setTextColor(...INK); doc.text(d8(s.at), L + 92, sy + 10.5); }
+  doc.setFont(w.f, "normal"); doc.setFontSize(7.5); doc.setTextColor(...LAB); doc.text("Your statutory rights are not affected.", A4W - L - 2, sy + 10.5, { align: "right" });
 };
 
 export const DOCS = [
@@ -312,9 +371,10 @@ export async function buildPdf(ctx, keys) {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   const f = useFonts(doc); doc.setFont(f, "normal");
   doc.setProperties({ title: `${ctx.biz.trading_name} ${ctx.ref}`, creator: "Motorwise Desk" });
+  await loadLogo();
   const w = new Writer(doc, f, ctx);
   for (const k of keys) SECTIONS[k](w, ctx);
-  w.footer();
+  if (keys.some(k => !["order", "tcs"].includes(k))) w.footer();
   return doc.output("blob");
 }
 

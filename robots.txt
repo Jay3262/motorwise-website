@@ -1,6 +1,7 @@
 User-agent: *
 Disallow: /admin/
 Disallow: /desk/
+Disallow: /sign/
 Allow: /
 
 Sitemap: https://motorwisehereford.co.uk/sitemap.xml

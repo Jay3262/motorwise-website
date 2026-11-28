@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Sign your documents · Motorwise Hereford</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%0A%0A%0A%3Cg%20transform%3D%22translate%280%200%29%20scale%281.0%29%22%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20rx%3D%228.5%22%20fill%3D%22%23101F32%22/%3E%3Cpath%20d%3D%22M9.5%2027.5V13l6%208.2%204.5-5.6%204.5%205.6%206-8.2v14.5%22%20stroke%3D%22%23FFFFFF%22%20stroke-width%3D%224.6%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/g%3E%0A%3C/svg%3E">
+<style>
+@font-face{font-family:"AHN";src:url(/fonts/ahn-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"AHN";src:url(/fonts/ahn-700.woff2) format("woff2");font-weight:700;font-display:swap}
+:root{--navy:#101F32;--teal:#087C70;--mint:#A9E6D8;--ink:#17222F;--mut:#5B6675;--line:#D5DDE4;--bg:#F3F6F8;--red:#B3261E}
+*{box-sizing:border-box}
+body{margin:0;font:400 17px/1.5 AHN,system-ui,sans-serif;color:var(--ink);background:var(--bg);-webkit-text-size-adjust:100%}
+header{background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px}
+header svg{flex:none}
+header b{font-size:18px;display:block;line-height:1.2}
+header span{font-size:13px;color:var(--mint)}
+main{max-width:640px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:26px;line-height:1.2;margin:4px 0 6px;color:var(--navy)}
+.lead{color:var(--mut);margin:0 0 20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.card h2{font-size:17px;margin:0 0 12px;color:var(--navy)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+dt{color:var(--mut)}dd{margin:0;text-align:right;font-weight:700}
+dd.big{font-size:20px;color:var(--navy)}
+.doc{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.doc p{margin:0;flex:1 1 220px}
+a.btn,button{font:inherit;font-weight:700;border-radius:8px;padding:13px 18px;border:1px solid var(--line);background:#fff;color:var(--navy);text-decoration:none;cursor:pointer;min-height:48px}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff;width:100%;font-size:18px}
+button:disabled{opacity:.55;cursor:default}
+label.f{display:block;font-weight:700;margin:0 0 6px}
+input[type=text]{width:100%;font:inherit;padding:12px;border:1px solid #AEB9C4;border-radius:8px;margin-bottom:14px}
+.pad{position:relative;border:1px solid #AEB9C4;border-radius:8px;background:#fff;height:170px;touch-action:none}
+.pad canvas{width:100%;height:100%;display:block;border-radius:8px}
+.pad .line{position:absolute;left:16px;right:16px;bottom:38px;border-bottom:1px solid var(--line);pointer-events:none}
+.pad .hint{position:absolute;left:16px;bottom:12px;font-size:13px;color:var(--mut);pointer-events:none}
+.row{display:flex;justify-content:space-between;align-items:center;margin:6px 0 14px}
+.row button{min-height:40px;padding:6px 14px;font-size:15px}
+.ck{display:flex;gap:12px;align-items:flex-start;margin:0 0 12px;font-size:16px}
+.ck input{width:24px;height:24px;flex:none;margin-top:2px;accent-color:var(--teal)}
+.err{color:var(--red);font-weight:700;margin:10px 0 0}
+.muted{color:var(--mut);font-size:14px}
+.done{border-color:var(--teal);border-width:2px}
+.done h1{color:var(--teal)}
+footer{text-align:center;color:var(--mut);font-size:13px;padding:0 16px 30px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <svg width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="8.5" fill="#fff"/><path d="M9.5 27.5V13l6 8.2 4.5-5.6 4.5 5.6 6-8.2v14.5" stroke="#101F32" stroke-width="4.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div><b>Motorwise Hereford</b><span>Ramsden Road, Hereford · 07424 947219</span></div>
+</header>
+<main>
+  <p id="loading">Loading your documents…</p>
+  <section id="fail" class="card" hidden><h1>Sorry</h1><p id="failmsg"></p><p class="muted">Call us on <a href="tel:07424947219">07424 947219</a> or email <a href="mailto:enquiries@motorwisehereford.co.uk">enquiries@motorwisehereford.co.uk</a>.</p></section>
+
+  <div id="app" hidden>
+    <h1 id="hello"></h1>
+    <p class="lead">Please read your order form and terms of sale, then sign below. It takes about two minutes.</p>
+
+    <section class="card"><h2>Your order</h2>
+      <dl>
+        <dt>Order number</dt><dd id="o-no"></dd>
+        <dt>Vehicle</dt><dd id="o-car"></dd>
+        <dt>Registration</dt><dd id="o-reg"></dd>
+        <dt id="o-del-l" hidden>Delivery</dt><dd id="o-del" hidden></dd>
+        <dt>Total price</dt><dd id="o-total" class="big"></dd>
+        <dt>Balance due</dt><dd id="o-bal"></dd>
+      </dl>
+    </section>
+
+    <section class="card"><h2>1. Read your documents</h2>
+      <div class="doc"><p>Vehicle order form and terms and conditions of sale (PDF, 2 pages).</p><a class="btn" id="open" href="#" target="_blank" rel="noopener">Open documents</a></div>
+      <p class="muted" id="openhint">Please open and read them before you sign.</p>
+    </section>
+
+    <section class="card" id="signcard"><h2>2. Sign</h2>
+      <label class="f" for="name">Your full name</label>
+      <input type="text" id="name" autocomplete="name" autocapitalize="words">
+      <label class="f">Your signature</label>
+      <div class="pad"><canvas id="pad" aria-label="Sign here with your finger or mouse"></canvas><div class="line"></div><div class="hint">Sign above the line</div></div>
+      <div class="row"><span class="muted">Use your finger or mouse</span><button type="button" id="clear">Clear</button></div>
+      <label class="ck"><input type="checkbox" id="c1"><span>I have read the vehicle order form and the terms and conditions of sale, including the known faults listed on the order form.</span></label>
+      <label class="ck"><input type="checkbox" id="c2"><span>I agree to buy the vehicle on these terms, and I agree that this electronic signature is my signature.</span></label>
+      <button class="primary" id="sign" type="button">Sign documents</button>
+      <p class="err" id="err" role="alert"></p>
+      <p class="muted">We record your name, signature, the time, your IP address and your device with this signature. Your statutory rights are not affected.</p>
+    </section>
+  </div>
+
+  <section id="done" class="card done" hidden>
+    <h1>Thank you, signed</h1>
+    <p id="donemsg"></p>
+    <p>We'll send you a copy of your signed documents. Any questions, call us on <a href="tel:07424947219">07424 947219</a>.</p>
+    <a class="btn" id="open2" href="#" target="_blank" rel="noopener">View your documents</a>
+  </section>
+</main>
+<footer>Motorwise Hereford is a trading name of Jacob Scott. Not VAT registered.</footer>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search), r = q.get("r"), t = q.get("t");
+  const $ = id => document.getElementById(id);
+  const API = "/.netlify/functions/esign";
+  const gbp = n => "£" + Number(n || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const date = s => new Date(s).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const fail = m => { $("loading").hidden = true; $("app").hidden = true; $("fail").hidden = false; $("failmsg").textContent = m; };
+  let pdfUrl = null, opened = false;
+  async function loadPdf() {
+    if (pdfUrl) return pdfUrl;
+    const res = await fetch(`${API}?r=${encodeURIComponent(r)}&t=${encodeURIComponent(t)}&pdf=1`); const j = await res.json();
+    if (!res.ok || !j.pdf) throw new Error(j.error || "The documents couldn't be loaded.");
+    const bin = atob(j.pdf), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return pdfUrl = URL.createObjectURL(new Blob([u8], { type: "application/pdf" }));
+  }
+  async function openDocs(ev) {
+    ev.preventDefault(); const w = window.open("", "_blank");
+    try { const u = await loadPdf(); opened = true; $("openhint").textContent = "Opened. You can open them again at any time."; if (w) w.location = u; else location.href = u; }
+    catch (e) { if (w) w.close(); alert(e.message); }
+  }
+  function showDone(d) {
+    $("loading").hidden = true; $("app").hidden = true; $("done").hidden = false;
+    $("donemsg").textContent = `Signed by ${d.signed_name} on ${new Date(d.signed_at).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" })} for order ${d.order_no}.`;
+  }
+  if (!r || !t) return fail("This signing link is incomplete. Please use the full link we sent you.");
+  fetch(`${API}?r=${encodeURIComponent(r)}&t=${encodeURIComponent(t)}`).then(async res => {
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) return fail(d.error || "This link couldn't be opened.");
+    if (d.status === "signed") return showDone(d);
+    $("loading").hidden = true; $("app").hidden = false;
+    const first = (d.customer_name || "").replace(/^(Mr|Mrs|Ms|Miss|Dr)\.?\s+/i, "").split(" ")[0];
+    $("hello").textContent = first ? `Hello ${first}, your documents are ready` : "Your documents are ready";
+    $("o-no").textContent = d.order_no; $("o-car").textContent = d.car_title; $("o-reg").textContent = d.reg;
+    $("o-total").textContent = gbp(d.total); $("o-bal").textContent = gbp(d.balance);
+    if (d.delivery) { $("o-del-l").hidden = $("o-del").hidden = false; $("o-del").textContent = d.delivery.date ? date(d.delivery.date) : "Date to be agreed"; }
+    $("name").value = (d.customer_name || "").replace(/^(Mr|Mrs|Ms|Miss|Dr)\.?\s+/i, "");
+  }).catch(() => fail("We couldn't load your documents. Please check your connection and try again."));
+  $("open").onclick = openDocs; $("open2").onclick = openDocs;
+
+  // signature pad
+  const cv = $("pad"), cx = cv.getContext("2d"); let drawing = false, dirty = false, last = null;
+  const fit = () => { const b = cv.getBoundingClientRect(), k = devicePixelRatio || 1; const img = dirty ? cv.toDataURL() : null; cv.width = b.width * k; cv.height = b.height * k; cx.setTransform(k, 0, 0, k, 0, 0); cx.lineWidth = 2.4; cx.lineCap = cx.lineJoin = "round"; cx.strokeStyle = "#101F32"; if (img) { const i = new Image(); i.onload = () => cx.drawImage(i, 0, 0, b.width, b.height); i.src = img; } };
+  const pos = e => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  cv.addEventListener("pointerdown", e => { drawing = true; last = pos(e); cv.setPointerCapture(e.pointerId); cx.beginPath(); cx.arc(last[0], last[1], 1.1, 0, 7); cx.fillStyle = "#101F32"; cx.fill(); dirty = true; });
+  cv.addEventListener("pointermove", e => { if (!drawing) return; const p = pos(e); cx.beginPath(); cx.moveTo(...last); cx.lineTo(...p); cx.stroke(); last = p; dirty = true; });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev => cv.addEventListener(ev, () => drawing = false));
+  $("clear").onclick = () => { cx.clearRect(0, 0, cv.width, cv.height); dirty = false; };
+  addEventListener("resize", fit); requestAnimationFrame(fit);
+
+  $("sign").onclick = async () => {
+    const err = $("err"); err.textContent = "";
+    const name = $("name").value.trim();
+    if (name.length < 3) return err.textContent = "Please type your full name.";
+    if (!dirty) return err.textContent = "Please sign in the box.";
+    if (!$("c1").checked || !$("c2").checked) return err.textContent = "Please tick both boxes to confirm.";
+    if (!opened && !confirm("You haven't opened the documents yet. Sign without reading them?")) return;
+    const b = $("sign"); b.disabled = true; b.textContent = "Signing…";
+    // trim to a white-background PNG the order form can print
+    const W = cv.width, Hh = cv.height, px = cx.getImageData(0, 0, W, Hh).data; let x0 = W, y0 = Hh, x1 = 0, y1 = 0;
+    for (let yy = 0; yy < Hh; yy++) for (let xx = 0; xx < W; xx++) if (px[(yy * W + xx) * 4 + 3] > 20) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+    const m = 12; x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W, x1 + m); y1 = Math.min(Hh, y1 + m);
+    const out = document.createElement("canvas"); out.width = Math.max(1, x1 - x0); out.height = Math.max(1, y1 - y0); const o = out.getContext("2d"); o.fillStyle = "#fff"; o.fillRect(0, 0, out.width, out.height); o.drawImage(cv, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    try {
+      const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ r, t, name, signature: out.toDataURL("image/png"), agree: true }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "That didn't work. Please try again.");
+      showDone(d); scrollTo(0, 0);
+    } catch (e) { err.textContent = e.message; b.disabled = false; b.textContent = "Sign documents"; }
+  };
+})();
+</script>
+</body>
+</html>

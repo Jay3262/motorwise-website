@@ -83,7 +83,7 @@ export async function importFromSite(store, siteUrl, progress = () => { }, { ski
       reg: e.plate || "", make: e.make, model: e.model, variant: e.trim || "", year: e.year, colour: e.colour || "", fuel: e.fuel || "", gearbox: inv[e.trans] || e.trans || "",
       mileage: e.mileage, mileage_approx: !!e.mileageApprox, mot_expiry: motIso, mot_notes: e.motNotes || "", asking_price: e.price, engine: e.engine || "", engine_cc: e.engineCc || null,
       body: e.body || "", doors: e.doors || null, equipment: (e.equip || []).join("\n"), known_faults: (e.issues || []).join("\n"), description: e.desc || "",
-      status: e.status === "sold" ? "sold" : e.status === "reserved" ? "reserved" : "available", stock_id: e.id, published: e.status !== "sold", published_at: (e.added || "") + "T12:00:00Z",
+      status: e.status === "sold" ? "sold" : e.status === "reserved" ? "reserved" : "available", stock_id: e.id, published: true, published_at: (e.added || "") + "T12:00:00Z",
       web_paths: (e.photos || []).map(p => p.replace(/^\//, "")), web_featured: !!e.featured, valet_preview: !!e.valetPreview, keys: 1, purchase_date: e.added || null,
     });
     for (const [i, src] of (e.photos || []).entries()) {

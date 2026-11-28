@@ -200,6 +200,7 @@ legend{font-weight:600;font-size:var(--fs-s);margin-bottom:8px;padding:0}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:20px}
 .card{position:relative;display:flex;flex-direction:column;background:var(--paper);border:0;border-radius:var(--r);overflow:hidden;transition:transform .25s ease,box-shadow .25s ease,border-color .25s}
 .card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.card.is-sold .ph img{filter:grayscale(.85) brightness(.92)}.card.is-sold .price{color:#6b7480}.soldband{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%) rotate(-8deg);background:rgba(16,31,50,.88);color:#fff;text-align:center;font-weight:800;letter-spacing:.06em;font-size:clamp(22px,3vw,30px);padding:6px 0;text-transform:uppercase;pointer-events:none}
 .card.wish{background:#101F32;color:#fff;justify-content:center}.card.wish:hover{transform:none;box-shadow:none}.card.wish .body{justify-content:center;gap:14px;padding:clamp(22px,2.4vw,32px)}.card.wish p{color:#d7e3ea;margin:0}.card.wish .wbtns{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
 .card .ph{position:relative;aspect-ratio:16/10;background:var(--stage);overflow:hidden}
 .card .bay{position:absolute;right:12px;top:12px;background:rgba(255,255,255,.92);color:#101F32;font:700 var(--fs-s)/1 var(--body);padding:6px 8px;border-radius:4px}
@@ -1038,13 +1039,12 @@ $("#footer").innerHTML=`<div class="wrap"><div class="fg">
 const FKEYS=["make","model","pmin","pmax","ymin","mmax","fuel","trans","body","eng","status","sort"];
 const SORTS={"price-asc":["Price: low to high",(a,b)=>pnum(a)-pnum(b)],"price-desc":["Price: high to low",(a,b)=>(b.price||0)-(a.price||0)],"newest":["Newest arrivals",(a,b)=>b.added.localeCompare(a.added)],"mileage":["Mileage: lowest first",(a,b)=>a.mileage-b.mileage],"year":["Registration year: newest first",(a,b)=>b.year-a.year||pnum(a)-pnum(b)]};
 const ENG={"upto-1-0":["Up to 1.0L",0,1050],"1-1-to-1-4":["1.1L to 1.4L",1050,1450],"1-5-to-1-6":["1.5L to 1.6L",1450,1650],"1-7-plus":["1.7L and above",1650,9999]};
-const STATUS={"current":"Available and reserved","available":"Available only","reserved":"Reserved","sold":"Recently sold"};
+const STATUS={"current":"All cars","available":"Available only","reserved":"Reserved","sold":"Recently sold"};
 function parseHash(h){const f={};h.split("--").slice(1).forEach(part=>{const i=part.indexOf("-");if(i>0){const k=part.slice(0,i),v=part.slice(i+1);if(FKEYS.includes(k))f[k]=v}});return f}
 function buildHash(f){return "used-cars"+FKEYS.filter(k=>f[k]&&!(k==="status"&&f[k]==="current")&&!(k==="sort"&&f[k]==="newest")).map(k=>`--${k}-${slug(f[k])}`).join("")}
 function applyFilters(f){
  const st=f.status||"current";
  let r=STOCK.filter(v=>{
-  if(st==="current"&&v.status==="sold")return false;
   if(st!=="current"&&v.status!==st)return false;
   if(f.make&&slug(v.make)!==f.make)return false;
   if(f.model&&slug(v.model)!==f.model)return false;
@@ -1057,7 +1057,8 @@ function applyFilters(f){
   if(f.body&&slug(v.body)!==f.body)return false;
   if(f.eng&&ENG[f.eng]&&!(v.engineCc>=ENG[f.eng][1]&&v.engineCc<ENG[f.eng][2]))return false;
   return true});
- return r.sort((SORTS[f.sort]||SORTS.newest)[1]);
+ const cmp=(SORTS[f.sort]||SORTS.newest)[1];
+ return r.sort((a,b)=>(a.status==="sold")-(b.status==="sold")||cmp(a,b));
 }
 const uniq=(a)=>[...new Set(a.filter(Boolean))].sort();
 const makes=()=>uniq(STOCK.map(v=>v.make));
@@ -1072,8 +1073,8 @@ const MotBadge=v=>v.mot?`<span class="wb">MOT until ${esc(v.mot)}</span>`:"";
 const motLink=v=>CONFIG.motCheckUrl+(v.plate?`?registration=${encodeURIComponent(v.plate.replace(/\s/g,""))}`:"");
 const statusTag=v=>v.status==="reserved"?`<span class="tag res">Reserved</span>`:v.status==="sold"?`<span class="tag sold">Sold</span>`:"";
 function VehicleCard(v){
- return `<article class="card rv">
-  <div class="ph">${pic(v)}<div class="tags">${statusTag(v)}</div></div>
+ return `<article class="card rv${v.status==="sold"?" is-sold":""}">
+  <div class="ph">${pic(v)}<div class="tags">${v.status==="sold"?"":statusTag(v)}</div>${v.status==="sold"?`<div class="soldband" aria-hidden="true">Sold</div>`:""}</div>
   <div class="body">
    <h3><a href="#car-${vSlug(v)}">${esc(title(v))}</a></h3>
    <div class="foot"><div class="price${v.price?"":" poa"}">${vprice(v)}</div>${MotBadge(v)}</div>
@@ -1237,7 +1238,7 @@ const FAQ=[
  ["Selling","Will you buy my car if I don't buy one?","Yes. Send us the details and we'll give you a quote, whether you're buying from us or not. If you've had a quote from We Buy Any Car or Motorway, tell us and we'll aim to beat it."]];
 PAGES.home=()=>{
  setMeta(null,"Affordable used cars from £500 to £5,000 on Ramsden Road, Hereford HR2 6RQ. Clear prices, no admin fees and every known fault listed. Viewings by appointment.");
- const live=liveStock(), n=live.length;
+ const live=liveStock(), n=live.length, shown=[...live,...STOCK.filter(v=>v.status==="sold").sort((a,b)=>(b.sold||b.added).localeCompare(a.sold||a.added))];
  const mk=uniq(live.map(v=>v.make)), bodies=uniq(live.map(v=>v.body)), fuels=uniq(live.map(v=>v.fuel));
  const chip=(href,label,c)=>c?`<a class="qchip" href="#${href}">${esc(label)}<small>${c}</small></a>`:"";
  const under=m=>live.filter(v=>v.price&&v.price<=m).length;
@@ -1271,7 +1272,7 @@ PAGES.home=()=>{
 
  <section class="sec" aria-labelledby="inh"><div class="wrap">
   <div class="shead"><div><h2 id="inh">In stock now</h2><p class="lede">Fresh on the yard. Prices include everything, with nothing added on.</p></div>${n?`<a class="arrow" href="#used-cars">See all ${n} cars ${ICON.arrow}</a>`:""}</div>
-  ${Grid(live.slice(0,8))}
+  ${Grid(shown.slice(0,8))}
  </div></section>
 
  <section class="sec px" aria-labelledby="pxh"><div class="wrap"><div class="pxgrid">
@@ -1364,8 +1365,8 @@ function renderFilters(){
  $("#f-model").disabled=!F.make;
 }
 function renderResults(){
- const list=applyFilters(F), all=STOCK.filter(v=>v.status!=="sold").length;
- $("#rc").innerHTML=`${list.length} car${list.length===1?"":"s"}<small>${Object.keys(F).filter(k=>k!=="sort").length?`of ${all} in stock`:"in stock"}</small>`;
+ const list=applyFilters(F), all=STOCK.filter(v=>v.status!=="sold").length, av=list.filter(v=>v.status!=="sold").length, sd=list.length-av;
+ $("#rc").innerHTML=`${av} car${av===1?"":"s"}<small>${Object.keys(F).filter(k=>k!=="sort"&&!(k==="status"&&F[k]==="current")).length?`of ${all} in stock`:"in stock"}${sd?` + ${sd} recently sold`:""}</small>`;
  const names={make:v=>makes().find(m=>slug(m)===v),model:v=>modelsOf().find(m=>slug(m)===v),pmin:v=>"From "+gbp(v),pmax:v=>"Up to "+gbp(v),ymin:v=>v+" or newer",mmax:v=>"Up to "+(+v).toLocaleString("en-GB")+" miles",body:v=>uniq(STOCK.map(x=>x.body)).find(b=>slug(b)===v),fuel:v=>uniq(STOCK.map(x=>x.fuel)).find(b=>slug(b)===v),trans:v=>uniq(STOCK.map(x=>x.trans)).find(b=>slug(b)===v),eng:v=>ENG[v]?.[0],status:v=>STATUS[v]};
  const active=FKEYS.filter(k=>k!=="sort"&&F[k]&&!(k==="status"&&F[k]==="current"));
  $("#chips").innerHTML=active.map(k=>`<button class="chip" data-rm="${k}" aria-label="Remove filter: ${esc(names[k](F[k]))}">${esc(names[k](F[k])||F[k])} ${ICON.x}</button>`).join("")+(active.length?`<button class="chip clearall" data-clear>Clear all</button>`:"");

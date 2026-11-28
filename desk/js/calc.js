@@ -16,8 +16,9 @@ export function carFigures(car, txs, settings = {}) {
   const sold = car.status === "sold";
   const salePrice = sold ? Number(car.sold_price) || 0 : 0;
   const px = sold ? Number(car.px_value) || 0 : 0;
-  const owed = sold ? Math.max(0, r2(salePrice - px - (received - refunds))) : 0;
-  const profit = sold ? r2(salePrice - cost - refunds) : null;
+  const delivery = sold ? Number(car.delivery_fee) || 0 : 0;
+  const owed = sold ? Math.max(0, r2(salePrice + delivery - px - (received - refunds))) : 0;
+  const profit = sold ? r2(salePrice + delivery - cost - refunds) : null;
   const lines = [[sor ? "Agreed amount to owner (sale or return)" : "Purchase price", purchase], ["Preparation and other costs", expenses]];
   const cashTied = sor ? expenses : cost; const ownerOwed = sor && sold ? Math.max(0, r2(payout - ownerPaid)) : 0;
   let vat = null;
